@@ -52,7 +52,7 @@ export function scopeError(scope) {
 }
 
 /** The next unselected scope field, with choices supplied by the rankings file. */
-export function scopeSuggestion({ payorsText, planTypesText, options }) {
+export function scopeSuggestion({ payorsText, planTypesText, options, requirePlanType = true }) {
   const selectedPayor = String(payorsText || '').trim()
   const selectedType = String(planTypesText || '').trim()
   const county = options?.county
@@ -68,7 +68,7 @@ export function scopeSuggestion({ payorsText, planTypesText, options }) {
       suggestionField: '',
     }
   }
-  if (!selectedType) {
+  if (requirePlanType && !selectedType) {
     return {
       content: `Which plan type should I use for ${place}?`,
       suggestions: planTypes,
@@ -99,19 +99,29 @@ function payorStem(name) {
   return previous.length >= 3 ? previous : ''
 }
 
-/** The rankings payor named in the question, such as "Humana" for "Humana Inc." */
-export function payorNamedInQuestion(question, payors) {
+function payorsMatchingQuestion(question, payors) {
   const text = payorKey(question)
   const names = [...new Set((payors || []).filter((payor) => typeof payor === 'string' && payor.trim()))]
-  if (!text || !names.length) return ''
-  const full = names.filter((payor) => text.includes(payorKey(payor)))
-  if (full.length === 1) return full[0]
-  if (full.length > 1) return full.sort((a, b) => payorKey(b).length - payorKey(a).length)[0]
-  const partial = names.filter((payor) => {
+  if (!text || !names.length) return []
+  return names.filter((payor) => {
+    const key = payorKey(payor)
     const stem = payorStem(payor)
-    return stem && text.includes(stem)
+    return (key && text.includes(key)) || (stem && text.includes(stem))
   })
-  return partial.length === 1 ? partial[0] : ''
+}
+
+/** Every rankings payor named in the question. */
+export function payorsNamedInQuestion(question, payors) {
+  return payorsMatchingQuestion(question, payors)
+}
+
+/** The rankings payor named in the question, when exactly one is named. */
+export function payorNamedInQuestion(question, payors) {
+  const matched = payorsMatchingQuestion(question, payors)
+  if (matched.length === 1) return matched[0]
+  if (matched.length < 2) return ''
+  const full = matched.filter((payor) => payorKey(question).includes(payorKey(payor)))
+  return full.length === 1 ? full[0] : ''
 }
 
 /** The plan type named in the question, when exactly one loaded type appears. */
@@ -166,10 +176,13 @@ export function scopeFromHistory(messages, stored) {
   return memory
 }
 
+const PROVIDER_QUESTION = /\b(cardiolog|specialt|providers?|hospitals?|how many|enrollment|bid|compare)\b/i
+
 export function routeMessage(text, lastKind, memory) {
+  if (PROVIDER_QUESTION.test(text) && !RANK_PATTERN.test(text)) return 'ask'
   if (RANK_PATTERN.test(text)) return 'rank'
-  if (memory?.payor && memory?.planType && /\b(difference|compare|versus|vs\.?|better|between)\b/i.test(text)) return 'rank'
-  if (RANK_FOLLOW_UP.has(lastKind)) return 'rank'
+  if (memory?.payor && memory?.planType && /\b(difference|versus|vs\.?|better|between)\b/i.test(text)) return 'rank'
+  if (RANK_FOLLOW_UP.has(lastKind) && !DATA_PATTERN.test(text)) return 'rank'
   if (DATA_PATTERN.test(text)) return 'ask'
   return 'chat'
 }

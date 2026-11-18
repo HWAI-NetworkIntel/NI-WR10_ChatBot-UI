@@ -7,6 +7,7 @@ import {
   createConversationTitle,
   resolveScope,
   payorNamedInQuestion,
+  payorsNamedInQuestion,
   planTypeNamedInQuestion,
   routeMessage,
   scopeError,
@@ -211,7 +212,7 @@ export function useChat() {
     const lengthError = route !== 'chat' && text.length > 500
       ? 'Network questions must be 500 characters or fewer.'
       : ''
-    const needsSuggestion = Boolean(scopeProblem) && !lengthError && !scopeProblem.startsWith('Each ')
+    const needsSuggestion = route === 'rank' && Boolean(scopeProblem) && !lengthError && !scopeProblem.startsWith('Each ')
 
     const rememberedScope = {
       ...(memory.payor ? { payor: memory.payor } : {}),
@@ -259,20 +260,21 @@ export function useChat() {
       ]
     })
 
-    if (lengthError || (scopeProblem && !needsSuggestion)) {
+    if (lengthError || (route === 'rank' && scopeProblem && !needsSuggestion)) {
       appendAssistantMessage(conversationId, { role: 'assistant', content: lengthError || scopeProblem })
       return
     }
 
-    const sendResolvedRequest = () => {
+    const sendResolvedRequest = (scopeOverride) => {
+      const requestScope = scopeOverride || scope
       const context = resolved.county ? { county: resolved.county, state: 'TX' } : undefined
       const request = route === 'ask'
-        ? askQuestion({ question: text, ...scope, ...(context ? { context } : {}) })
+        ? askQuestion({ question: text, ...requestScope, ...(context ? { context } : {}) })
         : route === 'rank'
           ? rankQuestion({
               message: text,
               question: text,
-              ...scope,
+              ...requestScope,
               ...(context ? { context } : {}),
               ...(currentConversation?.rankSessionId ? { sessionId: currentConversation.rankSessionId } : {}),
             })
@@ -295,7 +297,48 @@ export function useChat() {
         })
     }
 
-    if (!needsSuggestion && !silent && !options.detected && (route === 'ask' || route === 'rank') && !lengthError) {
+    if (route === 'ask' && !lengthError) {
+      fetchRankOptions({ q: text, county: resolved.county })
+        .then((rankChoices) => {
+          const named = payorsNamedInQuestion(text, rankChoices.payors)
+          const namedType = planTypeNamedInQuestion(text, rankChoices.planTypes)
+          const payorList = named.length ? named : (resolved.payor ? [resolved.payor] : [])
+          const types = namedType
+            ? [namedType]
+            : (resolved.planType ? [resolved.planType] : (rankChoices.planTypes?.length ? rankChoices.planTypes : ['HMO', 'PPO']))
+          if (!payorList.length) {
+            const suggestion = scopeSuggestion({
+              payorsText: '',
+              planTypesText: resolved.planType,
+              options: rankChoices,
+              requirePlanType: false,
+            })
+            appendAssistantMessage(conversationId, {
+              role: 'assistant',
+              content: suggestion?.content || 'Which payor should I use?',
+              meta: {
+                source: route,
+                kind: 'clarify',
+                suggestions: suggestion?.suggestions || [],
+                suggestionField: suggestion?.suggestionField || 'payor',
+                ...(rankChoices?.county ? { county: rankChoices.county } : {}),
+              },
+            }, undefined, { county: rankChoices?.county || resolved.county })
+            return
+          }
+          sendResolvedRequest({
+            payors: payorList,
+            payorsCrossPlanTypes: payorList.flatMap((payor) => types.map((planType) => ({ payor, planType }))),
+          })
+        })
+        .catch((error) => {
+          const content = error instanceof Error ? error.message : 'Rank options are unavailable.'
+          appendAssistantMessage(conversationId, { role: 'assistant', content, meta: { source: route } })
+        })
+      return
+    }
+
+    if (!needsSuggestion && !silent && !options.detected && route === 'rank' && !lengthError) {
       fetchRankOptions({ q: text, county: resolved.county })
         .then((rankChoices) => {
           const namedPayor = payorNamedInQuestion(text, rankChoices.payors)

@@ -6,6 +6,7 @@ import {
   chatTranscript,
   resolveScope,
   payorNamedInQuestion,
+  payorsNamedInQuestion,
   planTypeNamedInQuestion,
   routeMessage,
   scopeError,
@@ -65,12 +66,20 @@ test('a payor named in the question is not offered again', () => {
   assert.equal(payorNamedInQuestion('Where do we rank in Houston County today?', payors), '')
   assert.equal(planTypeNamedInQuestion('Where does Humana HMO rank in Dallas County?', ['HMO', 'PPO']), 'HMO')
   assert.equal(planTypeNamedInQuestion('Where does Humana rank in Dallas County?', ['HMO', 'PPO']), '')
+  assert.deepEqual(payorsNamedInQuestion('Compare Humana and UnitedHealthcare cardiologists in Harris County', payors), [
+    'Humana Inc.',
+    'UnitedHealth Group, Inc.',
+  ])
 })
 
 test('questions route to rank, ask, or chat', () => {
   assert.equal(routeMessage('Where does Humana rank in Houston County?'), 'rank')
   assert.equal(routeMessage('yes', 'confirm'), 'rank')
   assert.equal(routeMessage('How many providers does Humana have in Dallas County?'), 'ask')
+  assert.equal(routeMessage('Compare Humana and UnitedHealthcare cardiologists in Harris County', undefined, {
+    payor: 'CVS Health Corporation',
+    planType: 'HMO',
+  }), 'ask')
   assert.equal(routeMessage('Thanks, that helps'), 'chat')
   assert.equal(routeMessage('What is the difference between CVS network and me', 'baseline', {
     payor: 'Health Care Service Corporation',
