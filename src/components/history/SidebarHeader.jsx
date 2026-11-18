@@ -7,7 +7,7 @@ function SidebarHeader({ onCollapse, onNewChat }) {
         <span className="brand-mark">
           <Sparkles size={18} strokeWidth={2.2} />
         </span>
-        <span className="brand-name">Genie<span>AI</span></span>
+        <span className="brand-name">NI Genie<span>AI</span></span>
       </button>
       <button
         aria-label="Collapse conversation sidebar"

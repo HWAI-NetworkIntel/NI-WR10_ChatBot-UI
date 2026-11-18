@@ -1,6 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 import { starterConversations } from '@/data/starterConversations'
-import { createConversationTitle, createReply } from '@/lib/chat'
+import { askQuestion, checkHealth, fetchRankOptions, rankQuestion, sendChat } from '@/lib/api'
+import {
+  assistantFromApi,
+  chatTranscript,
+  createConversationTitle,
+  resolveScope,
+  payorNamedInQuestion,
+  planTypeNamedInQuestion,
+  routeMessage,
+  scopeError,
+  scopeFromHistory,
+  scopeSuggestion,
+} from '@/lib/chat'
 import { loadChats, saveChats } from '@/lib/db'
 
 export function useChat() {
@@ -12,6 +24,9 @@ export function useChat() {
   const [messages, setMessages] = useState([])
   const [draft, setDraft] = useState('')
   const [isThinking, setIsThinking] = useState(false)
+  const [payors, setPayors] = useState('')
+  const [planTypes, setPlanTypes] = useState('')
+  const [apiStatus, setApiStatus] = useState('')
   const activeConversationRef = useRef(null)
 
   useEffect(() => {
@@ -31,6 +46,25 @@ export function useChat() {
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    checkHealth()
+      .then(({ ok, body }) => {
+        if (cancelled || ok) return
+        setApiStatus(body?.message || 'The network data service is unavailable.')
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setApiStatus('The network data service is not running. Start NI-WR10_ChatBot on port 4010.')
+        }
       })
 
     return () => {
@@ -61,13 +95,18 @@ export function useChat() {
     setActiveId(null)
     setMessages([])
     setDraft('')
+    setPayors('')
+    setPlanTypes('')
     setIsThinking(false)
   }
 
   const openConversation = (conversation) => {
+    const memory = scopeFromHistory(conversation.messages, conversation.scopeMemory)
     activeConversationRef.current = conversation.id
     setActiveId(conversation.id)
     setMessages(conversation.messages)
+    setPayors(memory.payor || '')
+    setPlanTypes(memory.planType || '')
     setIsThinking(false)
   }
 
@@ -117,28 +156,92 @@ export function useChat() {
     })
   }
 
-  const sendMessage = (content = draft) => {
-    const text = content.trim()
-    if (!text || isThinking || isLoading) return
+  const appendAssistantMessage = (conversationId, assistantMessage, rankSessionId, scopePatch) => {
+    if (activeConversationRef.current === conversationId) {
+      setMessages((current) => [...current, assistantMessage])
+      setIsThinking(false)
+      if (scopePatch?.payor) setPayors(scopePatch.payor)
+      if (scopePatch?.planType) setPlanTypes(scopePatch.planType)
+    }
+    setConversations((current) =>
+      current.map((conversation) => {
+        if (conversation.id !== conversationId) return conversation
+        const scopeMemory = {
+          ...(conversation.scopeMemory || {}),
+          ...(scopePatch?.payor ? { payor: scopePatch.payor } : {}),
+          ...(scopePatch?.planType ? { planType: scopePatch.planType } : {}),
+          ...(scopePatch?.county ? { county: scopePatch.county } : {}),
+        }
+        return {
+          ...conversation,
+          messages: [...conversation.messages, assistantMessage],
+          ...(rankSessionId ? { rankSessionId } : {}),
+          scopeMemory,
+        }
+      }),
+    )
+  }
 
+  const sendMessage = (content = draft, options = {}) => {
+    const text = String(content || '').trim()
+    if (!text || isLoading) return
+    if (isThinking && !options.continue) return
+
+    const payorsText = options.payorsText ?? payors
+    const planTypesText = options.planTypesText ?? planTypes
+    const silent = Boolean(options.silent)
     const userMessage = { role: 'user', content: text }
-    const conversationId = activeId ?? crypto.randomUUID()
+    const conversationId = silent
+      ? (activeId ?? activeConversationRef.current)
+      : (activeId ?? crypto.randomUUID())
+    if (!conversationId) return
     const currentConversation = conversations.find(
       (conversation) => conversation.id === conversationId,
     )
-    const updatedMessages = [...(currentConversation?.messages ?? messages), userMessage]
+    const priorMessages = currentConversation?.messages ?? messages
+    const memory = scopeFromHistory(priorMessages, currentConversation?.scopeMemory)
+    const resolved = resolveScope({ payorText: payorsText, planTypeText: planTypesText, question: text, memory })
+    const updatedMessages = silent
+      ? priorMessages
+      : [...priorMessages, userMessage]
+    const lastAssistant = [...updatedMessages].reverse().find((message) => message.role === 'assistant')
+    const route = routeMessage(text, silent ? undefined : lastAssistant?.meta?.kind, resolved)
+    const scope = { payors: resolved.payors, payorsCrossPlanTypes: resolved.payorsCrossPlanTypes }
+    const scopeProblem = route === 'chat' ? '' : scopeError(scope)
+    const lengthError = route !== 'chat' && text.length > 500
+      ? 'Network questions must be 500 characters or fewer.'
+      : ''
+    const needsSuggestion = Boolean(scopeProblem) && !lengthError && !scopeProblem.startsWith('Each ')
+
+    const rememberedScope = {
+      ...(memory.payor ? { payor: memory.payor } : {}),
+      ...(memory.planType ? { planType: memory.planType } : {}),
+      ...(memory.county ? { county: memory.county } : {}),
+      ...(resolved.payor ? { payor: resolved.payor } : {}),
+      ...(resolved.planType ? { planType: resolved.planType } : {}),
+      ...(resolved.county ? { county: resolved.county } : {}),
+    }
+    if (resolved.payor && resolved.payor !== payors) setPayors(resolved.payor)
+    if (resolved.planType && resolved.planType !== planTypes) setPlanTypes(resolved.planType)
 
     activeConversationRef.current = conversationId
     setActiveId(conversationId)
-    setMessages(updatedMessages)
-    setDraft('')
+    if (!silent) {
+      setMessages(updatedMessages)
+      setDraft('')
+    }
     setIsThinking(true)
     setConversations((current) => {
       const exists = current.some((conversation) => conversation.id === conversationId)
       if (exists) {
         return current.map((conversation) =>
           conversation.id === conversationId
-            ? { ...conversation, updated: 'Just now', messages: updatedMessages }
+            ? {
+                ...conversation,
+                updated: 'Just now',
+                messages: silent ? conversation.messages : updatedMessages,
+                scopeMemory: { ...conversation.scopeMemory, ...rememberedScope },
+              }
             : conversation,
         )
       }
@@ -149,25 +252,122 @@ export function useChat() {
           title: createConversationTitle(text),
           updated: 'Just now',
           messages: updatedMessages,
+          rankSessionId: currentConversation?.rankSessionId,
+          scopeMemory: rememberedScope,
         },
         ...current,
       ]
     })
 
-    window.setTimeout(() => {
-      const assistantMessage = { role: 'assistant', content: createReply(text) }
-      if (activeConversationRef.current === conversationId) {
-        setMessages((current) => [...current, assistantMessage])
-        setIsThinking(false)
-      }
-      setConversations((current) =>
-        current.map((conversation) =>
-          conversation.id === conversationId
-            ? { ...conversation, messages: [...conversation.messages, assistantMessage] }
-            : conversation,
-        ),
-      )
-    }, 650)
+    if (lengthError || (scopeProblem && !needsSuggestion)) {
+      appendAssistantMessage(conversationId, { role: 'assistant', content: lengthError || scopeProblem })
+      return
+    }
+
+    const sendResolvedRequest = () => {
+      const context = resolved.county ? { county: resolved.county, state: 'TX' } : undefined
+      const request = route === 'ask'
+        ? askQuestion({ question: text, ...scope, ...(context ? { context } : {}) })
+        : route === 'rank'
+          ? rankQuestion({
+              message: text,
+              question: text,
+              ...scope,
+              ...(context ? { context } : {}),
+              ...(currentConversation?.rankSessionId ? { sessionId: currentConversation.rankSessionId } : {}),
+            })
+          : sendChat(chatTranscript(updatedMessages))
+
+      request
+        .then((data) => {
+          const reply = assistantFromApi(data)
+          if (reply.message.meta) reply.message.meta.source = route
+          else reply.message.meta = { source: route }
+          appendAssistantMessage(conversationId, reply.message, reply.rankSessionId, {
+            payor: reply.message.meta?.payor || resolved.payor,
+            planType: reply.message.meta?.planType || resolved.planType,
+            county: reply.message.meta?.county || resolved.county,
+          })
+        })
+        .catch((error) => {
+          const content = error instanceof Error ? error.message : 'The network service request failed.'
+          appendAssistantMessage(conversationId, { role: 'assistant', content, meta: { source: route } })
+        })
+    }
+
+    if (!needsSuggestion && !silent && !options.detected && (route === 'ask' || route === 'rank') && !lengthError) {
+      fetchRankOptions({ q: text, county: resolved.county })
+        .then((rankChoices) => {
+          const namedPayor = payorNamedInQuestion(text, rankChoices.payors)
+          const namedType = planTypeNamedInQuestion(text, rankChoices.planTypes)
+          if ((namedPayor && namedPayor !== resolved.payor) || (namedType && namedType !== resolved.planType)) {
+            sendMessage(text, {
+              payorsText: namedPayor || resolved.payor,
+              planTypesText: namedType || resolved.planType,
+              silent: true,
+              continue: true,
+              detected: true,
+            })
+            return
+          }
+          sendResolvedRequest()
+        })
+        .catch((error) => {
+          const content = error instanceof Error ? error.message : 'Rank options are unavailable.'
+          appendAssistantMessage(conversationId, { role: 'assistant', content, meta: { source: route } })
+        })
+      return
+    }
+
+    if (needsSuggestion) {
+      fetchRankOptions({ q: text, county: resolved.county })
+        .then((rankChoices) => {
+          const namedPayor = resolved.payor || payorNamedInQuestion(text, rankChoices.payors)
+          const namedType = resolved.planType || planTypeNamedInQuestion(text, rankChoices.planTypes)
+          if (namedPayor !== resolved.payor || namedType !== resolved.planType) {
+            sendMessage(text, {
+              payorsText: namedPayor,
+              planTypesText: namedType,
+              silent: true,
+              continue: true,
+            })
+            return null
+          }
+          if (!namedType) return rankChoices
+          return fetchRankOptions({ q: text, county: resolved.county || rankChoices.county, planType: namedType })
+        })
+        .then((rankChoices) => {
+          if (!rankChoices) return
+          const suggestion = scopeSuggestion({
+            payorsText: resolved.payor,
+            planTypesText: resolved.planType,
+            options: rankChoices,
+          })
+          if (!suggestion) return
+          appendAssistantMessage(conversationId, {
+            role: 'assistant',
+            content: suggestion?.content || 'Choose a plan type and payor.',
+            meta: {
+              source: route,
+              kind: 'clarify',
+              suggestions: suggestion?.suggestions || [],
+              suggestionField: suggestion?.suggestionField || '',
+              ...(rankChoices?.county ? { county: rankChoices.county } : {}),
+            },
+          }, undefined, {
+            payor: resolved.payor,
+            planType: resolved.planType,
+            county: rankChoices?.county || resolved.county,
+          })
+        })
+        .catch((error) => {
+          const content = error instanceof Error ? error.message : 'Rank options are unavailable.'
+          appendAssistantMessage(conversationId, { role: 'assistant', content, meta: { source: route } })
+        })
+      return
+    }
+
+    sendResolvedRequest()
   }
 
   return {
@@ -175,13 +375,31 @@ export function useChat() {
     conversations,
     deleteConversation,
     draft,
+    apiStatus,
     isThinking,
     isLoading,
     messages,
+    payors,
+    planTypes,
     openConversation,
     reorderConversation,
+    applySuggestion: (field, value) => {
+      const nextPayors = field === 'payor' ? value : payors
+      const nextPlanTypes = field === 'planType' ? value : planTypes
+      if (field === 'payor') setPayors(value)
+      else if (field === 'planType') setPlanTypes(value)
+      const lastUser = [...messages].reverse().find((message) => message.role === 'user')
+      if (!lastUser) return
+      sendMessage(lastUser.content, {
+        payorsText: nextPayors,
+        planTypesText: nextPlanTypes,
+        silent: true,
+      })
+    },
     sendMessage,
     setDraft,
+    setPayors,
+    setPlanTypes,
     startNewChat,
     storageError,
     toggleArchivedConversation,

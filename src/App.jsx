@@ -41,11 +41,13 @@ function App() {
       <main className="portal-main">
         {chat.isLoading && <p role="status">Loading chat history…</p>}
         {chat.storageError && <p role="alert">{chat.storageError}</p>}
+        {chat.apiStatus && <p className="portal-status" role="status">{chat.apiStatus}</p>}
         <div className={`portal-conversation ${chat.messages.length === 0 ? 'portal-empty' : ''}`}>
           <ChatPanel
             activeId={chat.activeId}
             isThinking={chat.isThinking}
             messages={chat.messages}
+            onApplySuggestion={chat.applySuggestion}
             onPromptSelect={chat.sendMessage}
           />
           <ChatComposer

@@ -1,13 +1,20 @@
-import { ArrowUp, ExternalLink, Info, Sparkles } from 'lucide-react'
+import { ArrowUp, ExternalLink, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 const suggestedPrompts = [
-  'Which states offer the highest number of plans covering transport services for 2027?',
-  'Which county offers the most C-SNP plans in 2027?',
-  'Give me a plan summary for bid ID H0523-022-000.',
+  'How many providers does Humana have in Dallas County, Texas?',
+  'Compare Humana and UnitedHealthcare cardiologists in Harris County',
+  'Where does Humana rank in Dallas County?',
 ]
 
-function ChatComposer({ draft, inputRef, isThinking, onDraftChange, onPromptSelect, onSend }) {
+function ChatComposer({
+  draft,
+  inputRef,
+  isThinking,
+  onDraftChange,
+  onPromptSelect,
+  onSend,
+}) {
   const handleSubmit = (event) => {
     event.preventDefault()
     onSend()
@@ -59,9 +66,6 @@ function ChatComposer({ draft, inputRef, isThinking, onDraftChange, onPromptSele
         </Button>
       </form>
       <div className="portal-composer-meta">
-        <span>
-          Updated with PBP 2027 · Enrollment till Oct 2026 · Data Coverage <Info size={12} />
-        </span>
         <button type="button">Pre-Read <ExternalLink size={12} /></button>
       </div>
     </footer>
