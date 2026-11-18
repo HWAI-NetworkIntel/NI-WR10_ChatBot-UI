@@ -1985,17 +1985,22 @@ textarea:focus-visible {
   gap: 8px;
   width: 100%;
   max-width: none;
+  margin: 0 0 10px;
   overflow-x: auto;
+  overflow-y: hidden;
   padding: 2px 1px 9px;
   overscroll-behavior-x: contain;
-  scrollbar-color: #c9c4cb transparent;
-  scrollbar-width: thin;
+  scrollbar-width: none;
   scroll-snap-type: x proximity;
+}
+
+.portal-empty .suggestion-grid::-webkit-scrollbar {
+  display: none;
 }
 
 .portal-empty .suggestion-card {
   display: flex;
-  flex: 0 0 270px;
+  flex: 0 0 300px;
   gap: 10px;
   min-height: 48px;
   padding: 6px 14px;

@@ -1,7 +1,13 @@
-import { ArrowUp, ExternalLink, Info } from 'lucide-react'
+import { ArrowUp, ExternalLink, Info, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
-function ChatComposer({ draft, inputRef, isThinking, onDraftChange, onSend }) {
+const suggestedPrompts = [
+  'Which states offer the highest number of plans covering transport services for 2027?',
+  'Which county offers the most C-SNP plans in 2027?',
+  'Give me a plan summary for bid ID H0523-022-000.',
+]
+
+function ChatComposer({ draft, inputRef, isThinking, onDraftChange, onPromptSelect, onSend }) {
   const handleSubmit = (event) => {
     event.preventDefault()
     onSend()
@@ -16,6 +22,21 @@ function ChatComposer({ draft, inputRef, isThinking, onDraftChange, onSend }) {
 
   return (
     <footer className="composer-area portal-composer-area">
+      {onPromptSelect && (
+        <div aria-label="Suggested questions" className="suggestion-grid">
+          {suggestedPrompts.map((prompt) => (
+            <Button
+              className="suggestion-card"
+              key={prompt}
+              onClick={() => onPromptSelect(prompt)}
+              type="button"
+            >
+              <Sparkles size={16} />
+              <span>{prompt}</span>
+            </Button>
+          ))}
+        </div>
+      )}
       <form className="composer portal-composer" onSubmit={handleSubmit}>
         <textarea
           aria-label="Enter your text"

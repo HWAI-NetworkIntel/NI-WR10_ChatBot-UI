@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react'
-import { Archive, ChevronDown, Plus } from 'lucide-react'
+import { useRef } from 'react'
+import { ChevronDown, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import CollapsedSidebar from '@/components/history/CollapsedSidebar'
 import ConversationList from '@/components/history/ConversationList'
@@ -10,14 +10,10 @@ function HistorySidebar({
   activeId,
   collapsed,
   conversations,
-  onArchiveConversation,
   onClose,
-  onDeleteConversation,
   onExpand,
   onNewChat,
   onOpenConversation,
-  onPinConversation,
-  onReorderConversation,
   onResize,
   onResizingChange,
   onSearchChange,
@@ -25,8 +21,6 @@ function HistorySidebar({
   sidebarWidth,
 }) {
   const dragRef = useRef(null)
-  const [showArchived, setShowArchived] = useState(false)
-  const archivedConversations = conversations.filter((conversation) => conversation.archived)
   const activeConversations = conversations.filter((conversation) => !conversation.archived)
 
   const startResize = (event) => {
@@ -82,42 +76,9 @@ function HistorySidebar({
               <ConversationList
                 activeId={activeId}
                 conversations={activeConversations}
-                groupKey="Chats"
-                onArchive={onArchiveConversation}
-                onDelete={onDeleteConversation}
                 onOpen={onOpenConversation}
-                onPin={onPinConversation}
-                onReorder={onReorderConversation}
               />
             </section>
-
-            {archivedConversations.length > 0 && (
-              <section className="archived-group">
-                <button
-                  aria-expanded={showArchived}
-                  className="archived-toggle"
-                  onClick={() => setShowArchived((show) => !show)}
-                  type="button"
-                >
-                  <Archive size={14} />
-                  <span>Archived</span>
-                  <span className="archived-count">{archivedConversations.length}</span>
-                  <ChevronDown className={showArchived ? 'is-expanded' : ''} size={14} />
-                </button>
-                {showArchived && (
-                  <ConversationList
-                    activeId={activeId}
-                    conversations={archivedConversations}
-                    groupKey="Archived"
-                    onArchive={onArchiveConversation}
-                    onDelete={onDeleteConversation}
-                    onOpen={onOpenConversation}
-                    onPin={onPinConversation}
-                    onReorder={onReorderConversation}
-                  />
-                )}
-              </section>
-            )}
           </nav>
 
           <div

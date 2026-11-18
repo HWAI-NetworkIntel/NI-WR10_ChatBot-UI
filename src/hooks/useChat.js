@@ -1,14 +1,60 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { starterConversations } from '@/data/starterConversations'
 import { createConversationTitle, createReply } from '@/lib/chat'
+import { loadChats, saveChats } from '@/lib/db'
 
 export function useChat() {
-  const [conversations, setConversations] = useState(starterConversations)
+  const [conversations, setConversations] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [storageError, setStorageError] = useState('')
+  const storageReadyRef = useRef(false)
   const [activeId, setActiveId] = useState(null)
   const [messages, setMessages] = useState([])
   const [draft, setDraft] = useState('')
   const [isThinking, setIsThinking] = useState(false)
   const activeConversationRef = useRef(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    loadChats(starterConversations)
+      .then((storedConversations) => {
+        if (cancelled) return
+        storageReadyRef.current = true
+        setConversations(storedConversations)
+      })
+      .catch((error) => {
+        if (cancelled) return
+        console.error('Failed to load chat history:', error)
+        setConversations(starterConversations)
+        setStorageError('Chat storage is unavailable. Changes will be lost on refresh.')
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (isLoading || !storageReadyRef.current) return
+
+    let cancelled = false
+    saveChats(conversations)
+      .then(() => {
+        if (!cancelled) setStorageError('')
+      })
+      .catch((error) => {
+        console.error('Failed to save chat history:', error)
+        if (!cancelled) setStorageError('Chat history could not be saved. Recent changes may be lost on refresh.')
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [conversations, isLoading])
 
   const startNewChat = () => {
     activeConversationRef.current = null
@@ -73,7 +119,7 @@ export function useChat() {
 
   const sendMessage = (content = draft) => {
     const text = content.trim()
-    if (!text || isThinking) return
+    if (!text || isThinking || isLoading) return
 
     const userMessage = { role: 'user', content: text }
     const conversationId = activeId ?? crypto.randomUUID()
@@ -130,12 +176,14 @@ export function useChat() {
     deleteConversation,
     draft,
     isThinking,
+    isLoading,
     messages,
     openConversation,
     reorderConversation,
     sendMessage,
     setDraft,
     startNewChat,
+    storageError,
     toggleArchivedConversation,
     togglePinnedConversation,
   }

@@ -27,14 +27,10 @@ function App() {
         activeId={chat.activeId}
         collapsed={sidebarCollapsed}
         conversations={visibleConversations}
-        onArchiveConversation={chat.toggleArchivedConversation}
         onClose={() => setSidebarCollapsed(true)}
-        onDeleteConversation={chat.deleteConversation}
         onExpand={() => setSidebarCollapsed(false)}
         onNewChat={startNewChat}
         onOpenConversation={chat.openConversation}
-        onPinConversation={chat.togglePinnedConversation}
-        onReorderConversation={chat.reorderConversation}
         onResize={setSidebarWidth}
         onResizingChange={setIsResizingSidebar}
         onSearchChange={setSearchTerm}
@@ -43,6 +39,8 @@ function App() {
       />
 
       <main className="portal-main">
+        {chat.isLoading && <p role="status">Loading chat history…</p>}
+        {chat.storageError && <p role="alert">{chat.storageError}</p>}
         <div className={`portal-conversation ${chat.messages.length === 0 ? 'portal-empty' : ''}`}>
           <ChatPanel
             activeId={chat.activeId}
@@ -53,8 +51,9 @@ function App() {
           <ChatComposer
             draft={chat.draft}
             inputRef={inputRef}
-            isThinking={chat.isThinking}
+            isThinking={chat.isThinking || chat.isLoading}
             onDraftChange={chat.setDraft}
+            onPromptSelect={chat.messages.length === 0 ? chat.sendMessage : undefined}
             onSend={chat.sendMessage}
           />
         </div>
