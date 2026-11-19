@@ -3,8 +3,7 @@ import { Button } from '@/components/ui/button'
 import preReadPdf from '../../../docs/NI_GenieAI.pdf?url'
 
 const suggestedPrompts = [
-  'How many providers does Humana have in Dallas County, Texas?',
-  'Compare Humana and UnitedHealthcare cardiologists in Harris County',
+  'What happens if HCA gets dropped from UnitedHealth Group, Inc., Texas?',
   'Where does Humana rank in Dallas County?',
 ]
 
