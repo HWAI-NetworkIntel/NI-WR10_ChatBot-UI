@@ -1,4 +1,4 @@
-import { ArrowUp, ExternalLink } from 'lucide-react'
+import { ArrowUp, ExternalLink, Square } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import preReadPdf from '../../../docs/NI_GenieAI.pdf?url'
 
@@ -10,20 +10,22 @@ const suggestedPrompts = [
 function ChatComposer({
   draft,
   inputRef,
+  isLoading,
   isThinking,
   onDraftChange,
   onPromptSelect,
   onSend,
+  onStop,
 }) {
   const handleSubmit = (event) => {
     event.preventDefault()
-    onSend()
+    if (!isThinking && !isLoading) onSend()
   }
 
   const handleInputKeyDown = (event) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
-      onSend()
+      if (!isThinking && !isLoading) onSend()
     }
   }
 
@@ -54,14 +56,15 @@ function ChatComposer({
           value={draft}
         />
         <Button
-          aria-label="Send message"
+          aria-label={isThinking ? 'Stop response' : 'Send message'}
           className="portal-send-button"
-          disabled={!draft.trim() || isThinking}
+          disabled={isLoading || (!isThinking && !draft.trim())}
+          onClick={isThinking ? onStop : undefined}
           size="icon"
-          type="submit"
+          type={isThinking ? 'button' : 'submit'}
           variant="default"
         >
-          <ArrowUp size={18} />
+          {isThinking ? <Square size={18} fill="currentColor" /> : <ArrowUp size={18} />}
         </Button>
       </form>
       <div className="portal-composer-meta">

@@ -1,6 +1,6 @@
 const API_BASE = import.meta.env.VITE_API_BASE || '/api'
 
-async function postJson(path, body) {
+async function postJson(path, body, { signal } = {}) {
   let response
   try {
     response = await fetch(`${API_BASE}${path}`, {
@@ -10,8 +10,10 @@ async function postJson(path, body) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
+      signal,
     })
-  } catch {
+  } catch (error) {
+    if (signal?.aborted) throw error
     throw new Error('The network data service is not reachable. Start NI-WR10_ChatBot and try again.')
   }
 
@@ -28,20 +30,20 @@ export function checkHealth() {
   })
 }
 
-export function askQuestion(payload) {
-  return postJson('/ask', payload)
+export function askQuestion(payload, options) {
+  return postJson('/ask', payload, options)
 }
 
-export function rankQuestion(payload) {
-  return postJson('/rank', payload)
+export function rankQuestion(payload, options) {
+  return postJson('/rank', payload, options)
 }
 
-export function fetchRankOptions({ q, county, planType } = {}) {
+export function fetchRankOptions({ q, county, planType } = {}, { signal } = {}) {
   const params = new URLSearchParams()
   if (q) params.set('q', q)
   if (county) params.set('county', county)
   if (planType) params.set('planType', planType)
-  return fetch(`${API_BASE}/rank/options?${params}`).then(async (response) => {
+  return fetch(`${API_BASE}/rank/options?${params}`, { signal }).then(async (response) => {
     const body = await response.json().catch(() => ({}))
     if (!response.ok) {
       throw new Error(body.error || 'Rank options are unavailable')
@@ -50,9 +52,9 @@ export function fetchRankOptions({ q, county, planType } = {}) {
   })
 }
 
-export function sendChat(messages) {
+export function sendChat(messages, options) {
   return postJson('/llm/chat', {
     system: 'Answer in plain English for a health-plan network analyst. Stay concise.',
     messages,
-  })
+  }, options)
 }

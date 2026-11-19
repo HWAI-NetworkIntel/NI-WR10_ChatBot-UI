@@ -1718,6 +1718,66 @@ textarea:focus-visible {
   text-align: left;
 }
 
+.user-message-actions,
+.user-message-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 5px;
+}
+
+.user-message-actions button,
+.user-message-edit-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 4px 7px;
+  color: #666;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.user-message-actions button:hover,
+.user-message-edit-actions button:hover {
+  background: #f1eef8;
+}
+
+.user-message-actions button:disabled,
+.user-message-edit-actions button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.user-message-editor {
+  width: min(100%, 490px);
+}
+
+.user-message-editor textarea {
+  display: block;
+  width: 100%;
+  min-height: 90px;
+  padding: 10px 13px;
+  color: #504b59;
+  background: #f1eef8;
+  border: 1px solid #c4b6ea;
+  border-radius: 12px;
+  font: inherit;
+  font-size: 15.8px;
+  line-height: 1.8;
+  resize: vertical;
+}
+
+.user-message-copy-status {
+  margin-top: 4px;
+  color: #666;
+  font-size: 12px;
+}
+
 .thinking-row {
   margin-top: 8px;
 }
