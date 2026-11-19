@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useId, useRef, useState } from 'react'
 import { ChevronDown, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import CollapsedSidebar from '@/components/history/CollapsedSidebar'
@@ -24,6 +24,10 @@ function HistorySidebar({
   sidebarWidth,
 }) {
   const dragRef = useRef(null)
+  const [pinnedCollapsed, setPinnedCollapsed] = useState(false)
+  const [recentCollapsed, setRecentCollapsed] = useState(false)
+  const pinnedListId = useId()
+  const recentListId = useId()
   const activeConversations = conversations.filter((conversation) => !conversation.archived)
   const pinnedConversations = activeConversations.filter((conversation) => conversation.pinned)
   const recentConversations = activeConversations.filter((conversation) => !conversation.pinned)
@@ -77,28 +81,55 @@ function HistorySidebar({
 
           <nav aria-label="Conversation history" className="conversation-history">
             <section aria-label="Pinned chats" className="history-group">
-              <h2><span className="history-group-label">Pinned</span><ChevronDown size={13} /></h2>
-              <ConversationList
-                activeId={activeId}
-                conversations={pinnedConversations}
-                emptyMessage="No pinned chats."
-                onOpen={onOpenConversation}
-                onDelete={onDeleteConversation}
-                onRename={onRenameConversation}
-                onTogglePinned={onTogglePinnedConversation}
-              />
+              <h2>
+                <button
+                  aria-controls={pinnedListId}
+                  aria-expanded={!pinnedCollapsed}
+                  aria-label={`${pinnedCollapsed ? 'Show' : 'Hide'} pinned chats`}
+                  className="history-group-toggle"
+                  onClick={() => setPinnedCollapsed((current) => !current)}
+                  type="button"
+                >
+                  <span className="history-group-label">Pinned</span>
+                  <ChevronDown aria-hidden="true" size={13} />
+                </button>
+              </h2>
+              <div hidden={pinnedCollapsed} id={pinnedListId}>
+                <ConversationList
+                  activeId={activeId}
+                  conversations={pinnedConversations}
+                  emptyMessage="No pinned chats."
+                  onOpen={onOpenConversation}
+                  onDelete={onDeleteConversation}
+                  onRename={onRenameConversation}
+                  onTogglePinned={onTogglePinnedConversation}
+                />
+              </div>
             </section>
             <section aria-label="Recent chats" className="history-group">
-              <h2>Recent <ChevronDown size={13} /></h2>
-              <ConversationList
-                activeId={activeId}
-                conversations={recentConversations}
-                emptyMessage="No recent chats."
-                onOpen={onOpenConversation}
-                onDelete={onDeleteConversation}
-                onRename={onRenameConversation}
-                onTogglePinned={onTogglePinnedConversation}
-              />
+              <h2>
+                <button
+                  aria-controls={recentListId}
+                  aria-expanded={!recentCollapsed}
+                  aria-label={`${recentCollapsed ? 'Show' : 'Hide'} recent chats`}
+                  className="history-group-toggle"
+                  onClick={() => setRecentCollapsed((current) => !current)}
+                  type="button"
+                >
+                  Recent <ChevronDown aria-hidden="true" size={13} />
+                </button>
+              </h2>
+              <div hidden={recentCollapsed} id={recentListId}>
+                <ConversationList
+                  activeId={activeId}
+                  conversations={recentConversations}
+                  emptyMessage="No recent chats."
+                  onOpen={onOpenConversation}
+                  onDelete={onDeleteConversation}
+                  onRename={onRenameConversation}
+                  onTogglePinned={onTogglePinnedConversation}
+                />
+              </div>
             </section>
           </nav>
 

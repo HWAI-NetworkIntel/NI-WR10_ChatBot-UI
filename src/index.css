@@ -1366,7 +1366,7 @@ textarea:focus-visible {
 }
 
 .messages-inner {
-  width: min(100%, 690px);
+  width: min(100%, 912px);
   margin: 0 auto;
 }
 
@@ -1436,7 +1436,7 @@ textarea:focus-visible {
 }
 
 .message-body p {
-  max-width: 620px;
+  max-width: 100%;
   margin: 0;
   color: #5e5965;
   font-size: 15.8px;
@@ -1445,7 +1445,7 @@ textarea:focus-visible {
 }
 
 .message-details {
-  max-width: 620px;
+  max-width: 100%;
   margin-top: 8px;
   color: #6d6876;
   font-size: 13.2px;
@@ -1506,7 +1506,7 @@ textarea:focus-visible {
 }
 
 .message-data-table {
-  max-width: 620px;
+  max-width: 100%;
   border: 1px solid #ebe9ef;
   border-radius: 8px;
 }
@@ -1709,7 +1709,7 @@ textarea:focus-visible {
 }
 
 .user-message-row .message-body p {
-  max-width: min(100%, 490px);
+  max-width: min(100%, 684px);
   padding: 10px 13px;
   color: #504b59;
   background: #f1eef8;
@@ -1754,7 +1754,7 @@ textarea:focus-visible {
 }
 
 .user-message-editor {
-  width: min(100%, 490px);
+  width: min(100%, 684px);
 }
 
 .user-message-editor textarea {
@@ -2309,6 +2309,24 @@ textarea:focus-visible {
   margin-right: 1px;
 }
 
+.portal-sidebar .history-group-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.portal-sidebar .history-group-toggle[aria-expanded='false'] svg {
+  transform: rotate(-90deg);
+}
+
 .portal-sidebar .history-group-label {
   display: flex;
   align-items: center;
@@ -2318,8 +2336,18 @@ textarea:focus-visible {
 .portal-sidebar .history-item-row {
   align-items: stretch;
   min-height: 41px;
-  margin-bottom: 1px;
+  margin-bottom: 7px;
   border-radius: 5px;
+}
+
+.portal-sidebar .history-item-row + .history-item-row::before {
+  position: absolute;
+  top: -4px;
+  right: 8px;
+  left: 8px;
+  border-top: 1px solid #ebe7ee;
+  content: '';
+  pointer-events: none;
 }
 
 .portal-sidebar .history-item-row:hover,
@@ -2720,15 +2748,15 @@ textarea:focus-visible {
 }
 
 .portal-collapsed-brand {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   margin-bottom: 2px;
   cursor: default;
 }
 
 .portal-collapsed-brand .brand-mark {
-  width: 34px;
-  height: 34px;
+  width: 44px;
+  height: 44px;
 }
 
 .portal-rail-action:hover {
