@@ -6,9 +6,13 @@ const RANK_FOLLOW_UP = new Set(['confirm', 'clarify', 'needs_data'])
 const RULE_OVERRIDE = /\b(ignore|disregard|forget|bypass|override)\b.{0,30}\b(rules?|instructions?|guardrails?|restrictions?|prompt|polic(?:y|ies))\b|\b(system prompt|developer mode|jailbreak|pretend (?:you are|to be))\b/i
 const WRITE_REQUEST = /\b(update|delete|insert|modify|edit|alter|truncate|drop|overwrite|change|write to)\b.{0,40}\b(tables?|records?|rows?|database|db|columns?|schema|network data)\b|\b(delete\s+from|insert\s+into|drop\s+table|alter\s+table|truncate\s+table|update\s+\w+\s+set)\b/i
 
-/** True for requests to change data or set aside the assistant's rules. */
+// Abuse and insults, same list as services/guidance.js in the service.
+const ABUSE = /\b(f+u+c+k+\w*|fck\w*|f\*+k\w*|motherf\w+|shit\w*|bullshit|bitch\w*|bastard\w*|asshole\w*|dickhead|cunt\w*|wtf|stfu|piss off|screw you|shut up|go to hell|you suck|useless (?:bot|tool|assistant)|stupid (?:bot|tool|assistant)|idiot\w*|moron\w*|dumbass)\b/i
+
+/** True for abuse, requests to change data, or attempts to set aside the assistant's rules. */
 export function isBlockedQuestion(text) {
   const value = String(text || '')
+  if (ABUSE.test(value)) return true
   if (/\b(add|remove|drop|hide|include)\b(?:\s+\S+){0,6}\s+columns?\b/i.test(value) && !RULE_OVERRIDE.test(value)) return false
   return RULE_OVERRIDE.test(value) || WRITE_REQUEST.test(value)
 }

@@ -20,6 +20,13 @@ test('write requests and rule overrides skip the payor prompt', () => {
   assert.equal(isBlockedQuestion('drop the rank column from the table'), false)
 })
 
+test('abuse goes straight to the service, never to a payor prompt', () => {
+  assert.equal(isBlockedQuestion('fuck off'), true)
+  assert.equal(isBlockedQuestion('you are an idiot'), true)
+  assert.equal(isBlockedQuestion('where do we rank in Bastrop county'), false)
+  assert.equal(isBlockedQuestion('Dickens county rankings'), false)
+})
+
 test('a refusal keeps its suggested questions and dashboard links', () => {
   const { message } = assistantFromApi({
     kind: 'refused',
