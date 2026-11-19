@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Clock3 } from 'lucide-react'
+import { Clock3, ExternalLink } from 'lucide-react'
 
 function ThinkingIndicator() {
   return (
@@ -16,15 +16,53 @@ function cellText(value) {
   return String(value)
 }
 
+const RANK_KINDS = new Set(['baseline', 'prediction', 'confirm', 'clarify', 'needs_data'])
+
+function normalized(text) {
+  return String(text || '').trim().replace(/[?.!\s]+$/, '').toLowerCase()
+}
+
+function Interpretation({ standalone, question }) {
+  if (!standalone || normalized(standalone) === normalized(question)) return null
+  return <p className="message-interpretation">Interpreted as: {standalone}</p>
+}
+
+function DataTable({ columns, rows, rowLimitHit }) {
+  if (!columns?.length || !rows?.length) return null
+  return (
+    <div className="message-table-wrap message-data-table">
+      <table>
+        <thead>
+          <tr>
+            {columns.map((column, columnIndex) => <th key={`${column}-${columnIndex}`}>{column}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, rowIndex) => (
+            <tr key={rowIndex}>
+              {columns.map((column, columnIndex) => (
+                <td key={`${column}-${columnIndex}`}>
+                  {cellText(Array.isArray(row) ? row[columnIndex] : row?.[column])}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {rowLimitHit && <p className="message-table-note">Showing the first rows returned.</p>}
+    </div>
+  )
+}
+
 function AnswerDetails({ meta }) {
   if (!meta) return null
-  const hasDetails = meta.explanation || meta.assumptions?.length || meta.references?.length || meta.sql || meta.columns
+  const hasDetails = meta.explanation || meta.assumptions?.length || meta.references?.length || meta.sql
   if (!hasDetails) return null
 
   return (
     <details className="message-details">
       <summary>
-        {meta.source === 'rank' ? 'Rank notes' : 'Query notes'}
+        {meta.source === 'rank' || RANK_KINDS.has(meta.kind) ? 'Rank notes' : 'Query notes'}
       </summary>
       {meta.explanation && <p>{meta.explanation}</p>}
       {meta.assumptions?.filter((assumption) => !/network score/i.test(assumption)).length > 0 && (
@@ -33,27 +71,6 @@ function AnswerDetails({ meta }) {
             .filter((assumption) => !/network score/i.test(assumption))
             .map((assumption) => <li key={assumption}>{assumption}</li>)}
         </ul>
-      )}
-      {meta.columns && (
-        <div className="message-table-wrap">
-          <table>
-            <thead>
-              <tr>
-                {meta.columns.map((column) => <th key={column}>{column}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {meta.rows.map((row, rowIndex) => (
-                <tr key={rowIndex}>
-                  {meta.columns.map((column, columnIndex) => (
-                    <td key={`${column}-${columnIndex}`}>{cellText(row[columnIndex])}</td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {meta.rowLimitHit && <p>Showing the first rows returned.</p>}
-        </div>
       )}
       {meta.references?.length > 0 && (
         <ul>
@@ -70,22 +87,25 @@ function AnswerDetails({ meta }) {
   )
 }
 
-function RankBoard({ standings }) {
-  const [view, setView] = useState(null)
+/** Standings chart. The table view is only drawn for older answers that came without their own columns and rows. */
+function RankBoard({ standings, hasTable }) {
+  const [view, setView] = useState(() => (hasTable || standings?.some((row) => row.focal) ? null : 'table'))
   if (!standings?.length) return null
   const maxRank = Math.max(...standings.map((row) => row.rank), 1)
 
   return (
     <div className="rank-board">
       <div className="scope-suggestions" role="group" aria-label="Rank views">
-        <button aria-pressed={view === 'table'} onClick={() => setView(view === 'table' ? null : 'table')} type="button">
-          View as table
-        </button>
+        {!hasTable && (
+          <button aria-pressed={view === 'table'} onClick={() => setView(view === 'table' ? null : 'table')} type="button">
+            View as table
+          </button>
+        )}
         <button aria-pressed={view === 'chart'} onClick={() => setView(view === 'chart' ? null : 'chart')} type="button">
           View as chart
         </button>
       </div>
-      {view === 'table' && (
+      {!hasTable && view === 'table' && (
         <div className="message-table-wrap">
           <table>
             <thead>
@@ -127,12 +147,31 @@ function RankBoard({ standings }) {
 function SuggestionChoices({ active, field, onSelect, suggestions }) {
   if (!active || !field || !suggestions?.length) return null
   return (
-    <div className="scope-suggestions" role="group" aria-label={field === 'payor' ? 'Payor suggestions' : 'Plan type suggestions'}>
+    <div className="scope-suggestions" role="group" aria-label={SUGGESTION_LABELS[field] || 'Suggestions'}>
       {suggestions.map((suggestion) => (
         <button key={suggestion} onClick={() => onSelect(field, suggestion)} type="button">
           {suggestion}
         </button>
       ))}
+    </div>
+  )
+}
+
+const SUGGESTION_LABELS = { payor: 'Payor suggestions', planType: 'Plan type suggestions', question: 'Suggested questions' }
+
+/** Dashboards with more detail. A link without a URL is shown as text so the user still knows where to look. */
+function GuideLinks({ links }) {
+  if (!links?.length) return null
+  return (
+    <div className="guide-links" role="group" aria-label="More detail in other dashboards">
+      <span className="guide-links-title">For more detail, open:</span>
+      {links.map((link) => (link.url ? (
+        <a key={link.label} href={link.url} rel="noopener noreferrer" target="_blank" title={link.description}>
+          {link.label} <ExternalLink size={11} />
+        </a>
+      ) : (
+        <span className="guide-link-text" key={link.label} title={link.description}>{link.label}</span>
+      )))}
     </div>
   )
 }
@@ -154,7 +193,20 @@ function MessageList({ activeId, isThinking, messages, onApplySuggestion }) {
             key={`${activeId}-${index}`}
           >
             <div className="message-body">
-              <p>{message.content}</p>
+              {message.role === 'assistant' && (
+                <Interpretation
+                  question={messages.slice(0, index).findLast((item) => item.role === 'user')?.content}
+                  standalone={message.meta?.standalone}
+                />
+              )}
+              {message.content ? <p>{message.content}</p> : null}
+              {message.role === 'assistant' && (
+                <DataTable
+                  columns={message.meta?.columns}
+                  rowLimitHit={message.meta?.rowLimitHit}
+                  rows={message.meta?.rows}
+                />
+              )}
               {message.role === 'assistant' && (
                 <SuggestionChoices
                   active={!isThinking && index === messages.length - 1}
@@ -163,7 +215,8 @@ function MessageList({ activeId, isThinking, messages, onApplySuggestion }) {
                   suggestions={message.meta?.suggestions}
                 />
               )}
-              {message.role === 'assistant' && <RankBoard standings={message.meta?.standings} />}
+              {message.role === 'assistant' && <GuideLinks links={message.meta?.links} />}
+              {message.role === 'assistant' && <RankBoard hasTable={Boolean(message.meta?.columns?.length && message.meta?.rows?.length)} standings={message.meta?.standings} />}
               {message.role === 'assistant' && <AnswerDetails meta={message.meta} />}
             </div>
           </article>

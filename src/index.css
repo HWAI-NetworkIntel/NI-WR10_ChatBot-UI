@@ -1306,6 +1306,51 @@ textarea:focus-visible {
   white-space: nowrap;
 }
 
+.message-body .message-interpretation {
+  margin-bottom: 4px;
+  color: #8a8494;
+  font-size: 11px;
+  font-style: italic;
+  line-height: 1.5;
+}
+
+.message-data-table {
+  max-width: 620px;
+  border: 1px solid #ebe9ef;
+  border-radius: 8px;
+}
+
+.message-data-table table {
+  width: 100%;
+  border-collapse: collapse;
+  color: #4f4a58;
+  font-size: 11px;
+}
+
+.message-data-table th,
+.message-data-table td {
+  padding: 5px 10px;
+  border-bottom: 1px solid #ebe9ef;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.message-data-table th {
+  color: #3d3946;
+  background: #f7f5fa;
+  font-weight: 600;
+}
+
+.message-data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.message-body .message-table-note {
+  padding: 4px 10px;
+  color: #8a8494;
+  font-size: 11px;
+}
+
 .scope-suggestions {
   display: flex;
   flex-wrap: wrap;
@@ -1333,6 +1378,41 @@ textarea:focus-visible {
   color: #fff;
   background: #6a4dc4;
   border-color: #6a4dc4;
+}
+
+.guide-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  max-width: 620px;
+  margin-top: 10px;
+  font-size: 11px;
+}
+
+.guide-links-title {
+  color: #6b6675;
+}
+
+.guide-links a,
+.guide-link-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  color: #5b3fae;
+  background: #f7f4fb;
+  border: 1px solid #ddd2ef;
+  border-radius: 999px;
+  text-decoration: none;
+}
+
+.guide-links a:hover {
+  border-color: #6a4dc4;
+}
+
+.guide-link-text {
+  color: #3d3946;
 }
 
 .rank-board {

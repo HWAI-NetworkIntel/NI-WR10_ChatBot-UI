@@ -1,6 +1,17 @@
-const RANK_PATTERN = /\brank\b|terminat|health system|physician group|where do we (?:land|rank)|if we (?:add|remove|drop|terminate)|adjacent count|surrounding count|best network|against payer|small groups/i
+const RANK_PATTERN = /\brank(?:ed|ing)?\b|\btop\s+\d+\b|terminat|health system|physician group|where do we (?:land|rank)|if we (?:add|remove|drop|terminate)|adjacent count|surrounding count|best network|against payer|small groups/i
 const DATA_PATTERN = /\b(how many|compare|which|list|providers?|hospitals?|enrollment|specialt(?:y|ies)|networks?|payers?|payors?|count(?:y|ies)|in-network|plans?|bid)\b/i
 const RANK_FOLLOW_UP = new Set(['confirm', 'clarify', 'needs_data'])
+
+// Same idea as the service guardrail (services/guidance.js). The service still decides; this only skips the payor prompt.
+const RULE_OVERRIDE = /\b(ignore|disregard|forget|bypass|override)\b.{0,30}\b(rules?|instructions?|guardrails?|restrictions?|prompt|polic(?:y|ies))\b|\b(system prompt|developer mode|jailbreak|pretend (?:you are|to be))\b/i
+const WRITE_REQUEST = /\b(update|delete|insert|modify|edit|alter|truncate|drop|overwrite|change|write to)\b.{0,40}\b(tables?|records?|rows?|database|db|columns?|schema|network data)\b|\b(delete\s+from|insert\s+into|drop\s+table|alter\s+table|truncate\s+table|update\s+\w+\s+set)\b/i
+
+/** True for requests to change data or set aside the assistant's rules. */
+export function isBlockedQuestion(text) {
+  const value = String(text || '')
+  if (/\b(add|remove|drop|hide|include)\b(?:\s+\S+){0,6}\s+columns?\b/i.test(value) && !RULE_OVERRIDE.test(value)) return false
+  return RULE_OVERRIDE.test(value) || WRITE_REQUEST.test(value)
+}
 
 export function createConversationTitle(prompt) {
   return prompt.length > 58 ? `${prompt.slice(0, 58)}…` : prompt
@@ -115,9 +126,22 @@ export function payorsNamedInQuestion(question, payors) {
   return payorsMatchingQuestion(question, payors)
 }
 
-/** The rankings payor named in the question, when exactly one is named. */
+function comparedPayor(question) {
+  const match = String(question || '').match(/\b(?:against|versus|vs\.?|compared? (?:with|to))\s+(?:payer\s+|payor\s+)?["']?([A-Za-z0-9][A-Za-z0-9 .&'-]*?)["']?(?=\s+in\b|[?.!]|$)/i)
+  return match ? match[1].trim() : ''
+}
+
+function isComparedPayor(payor, question) {
+  const target = payorKey(comparedPayor(question))
+  if (target.length < 3) return false
+  const full = payorKey(payor)
+  const stem = payorStem(payor)
+  return target === full || (stem && (target === stem || target.startsWith(stem) || stem.startsWith(target)))
+}
+
+/** The rankings payor named in the question, when exactly one is named. The payer after "against" stays the comparison target. */
 export function payorNamedInQuestion(question, payors) {
-  const matched = payorsMatchingQuestion(question, payors)
+  const matched = payorsMatchingQuestion(question, payors).filter((payor) => !isComparedPayor(payor, question))
   if (matched.length === 1) return matched[0]
   if (matched.length < 2) return ''
   const full = matched.filter((payor) => payorKey(question).includes(payorKey(payor)))
@@ -134,9 +158,23 @@ export function planTypeNamedInQuestion(question, planTypes) {
   return named.length === 1 ? named[0] : ''
 }
 
+function usableCounty(value) {
+  const text = String(value || '').trim()
+  if (!text || /\b(what|which|all|every|any|its|it's|available|where)\b/i.test(text)) return ''
+  return text
+}
+
 export function countyInQuestion(text) {
-  const match = String(text || '').match(/\b(?:in|for|within)\s+([A-Za-z][A-Za-z .'-]*?)\s+county\b/i)
-  return match ? match[1].trim() : ''
+  const source = String(text || '').trim()
+  const directed = source.match(/\b(?:in|for|within)\s+([A-Za-z][A-Za-z .'-]*?)\s+county\b/i)
+  if (directed) return usableCounty(directed[1])
+  const labeled = source.match(/^([A-Za-z][A-Za-z .'-]*?)\s+county(?:\s*,?\s*(?:texas|tx))?\.?$/i)
+  return labeled ? usableCounty(labeled[1]) : ''
+}
+
+/** County the answer is about. The county named in this message wins over a remembered one. */
+export function responseCounty({ question, memoryCounty, optionsCounty } = {}) {
+  return countyInQuestion(question) || optionsCounty || memoryCounty || ''
 }
 
 /** Keep a chosen payor, plan type, and county for later questions in the same chat. */
@@ -178,7 +216,25 @@ export function scopeFromHistory(messages, stored) {
 
 const PROVIDER_QUESTION = /\b(cardiolog|specialt|providers?|hospitals?|how many|enrollment|bid|compare)\b/i
 
-export function routeMessage(text, lastKind, memory) {
+export function listsRankedPayors(text) {
+  const value = String(text || '').trim()
+  if (/\b(top\s+\d+|highest\s+rank|best\s+rank|ranked\s+pay(?:er|or)s?)\b/i.test(value)) return true
+  return /^(?:in\s+)?[a-z][a-z .'-]{0,40}\s+county(?:\s*,?\s*(?:texas|tx))?$/i.test(value)
+    || /^(?:in\s+)[a-z][a-z .'-]{1,40}$/i.test(value)
+}
+
+const TABLE_FOLLOW_UP = /\b(?:add|remove|drop|include|exclude|show|hide)\b.*\bcolumns?\b|\bcolumns?\s+for\b|\bsort(?:ed)?\s+by\b|\border\s+by\b|\bsame\s+(?:for|but|thing)\b|^(?:and|what about|how about)\s+(?:for\s+)?[A-Za-z]/i
+const ANSWER_SOURCES = new Set(['ask', 'rank'])
+
+/** True when the text only makes sense against the previous answer, e.g. "add a column for enrollment". */
+export function isTableFollowUp(text) {
+  return TABLE_FOLLOW_UP.test(String(text || '').trim())
+}
+
+export function routeMessage(text, lastKind, memory, lastSource) {
+  if (listsRankedPayors(text)) return 'rank'
+  if (ANSWER_SOURCES.has(lastSource) && isTableFollowUp(text)) return lastSource
+  if (lastSource === 'ask' && RANK_FOLLOW_UP.has(lastKind) && !RANK_PATTERN.test(text)) return 'ask'
   if (PROVIDER_QUESTION.test(text) && !RANK_PATTERN.test(text)) return 'ask'
   if (RANK_PATTERN.test(text)) return 'rank'
   if (memory?.payor && memory?.planType && /\b(difference|versus|vs\.?|better|between)\b/i.test(text)) return 'rank'
@@ -213,12 +269,50 @@ export function ranksAheadSentence(standings) {
   return `The payors ranked ${rankLabel(1)} through ${rankLabel(focal.rank - 1)} are ${listed}.`
 }
 
+function markdownCells(line) {
+  return line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|')
+    .map((cell) => cell.trim().replace(/^\*\*(.*)\*\*$/, '$1').replace(/^`(.*)`$/, '$1'))
+}
+
+const TABLE_DIVIDER = /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/
+
+/** The first markdown table in the text, plus the text without it. */
+export function parseMarkdownTable(text) {
+  const lines = String(text || '').split(/\r?\n/)
+  for (let index = 0; index < lines.length - 1; index += 1) {
+    if (!lines[index].includes('|') || !TABLE_DIVIDER.test(lines[index + 1])) continue
+    const columns = markdownCells(lines[index])
+    if (columns.length < 2) continue
+    let end = index + 2
+    const rows = []
+    while (end < lines.length && lines[end].includes('|') && lines[end].trim()) {
+      const cells = markdownCells(lines[end])
+      rows.push(columns.map((_, cellIndex) => cells[cellIndex] ?? ''))
+      end += 1
+    }
+    const rest = [...lines.slice(0, index), ...lines.slice(end)].join('\n').replace(/\n{3,}/g, '\n\n').trim()
+    return { columns, rows, text: rest }
+  }
+  return null
+}
+
 /** Turn an /ask, /rank, or /llm/chat JSON body into a chat message. */
 export function assistantFromApi(data) {
   let content = firstText(data?.content, data?.answer, data?.explanation, data?.message, data?.error)
     || 'No response from the network service.'
-  const meta = {}
+  const meta = { fromService: true }
   if (typeof data?.kind === 'string') meta.kind = data.kind
+  const standalone = firstText(data?.standalone)
+  if (standalone) meta.standalone = standalone
+  const markdownTable = parseMarkdownTable(content)
+  if (markdownTable) {
+    content = markdownTable.text
+    if (!(Array.isArray(data?.columns) && Array.isArray(data?.rows) && data.rows.length) && markdownTable.rows.length) {
+      meta.columns = markdownTable.columns
+      meta.rows = markdownTable.rows.slice(0, 50)
+      if (markdownTable.rows.length > 50) meta.rowLimitHit = true
+    }
+  }
   const explanation = firstText(data?.explanation)
   if (explanation && explanation !== content) meta.explanation = explanation
   if (Array.isArray(data?.assumptions)) {
@@ -232,14 +326,24 @@ export function assistantFromApi(data) {
   }
   if (Array.isArray(data?.columns) && Array.isArray(data?.rows) && data.rows.length) {
     meta.columns = data.columns.map((column) => String(column))
-    meta.rows = data.rows.slice(0, 25)
-    if (data.rowLimitHit || data.rows.length > 25) meta.rowLimitHit = true
+    meta.rows = data.rows.slice(0, 50)
+    if (data.rowLimitHit || data.rows.length > 50) meta.rowLimitHit = true
   }
   if (Array.isArray(data?.suggestions)) {
     const suggestions = data.suggestions.filter((item) => typeof item === 'string' && item.trim())
     if (suggestions.length) meta.suggestions = suggestions
   }
   if (typeof data?.suggestionField === 'string' && data.suggestionField) meta.suggestionField = data.suggestionField
+  if (Array.isArray(data?.links)) {
+    const links = data.links
+      .filter((link) => link && typeof link.label === 'string' && link.label.trim())
+      .map((link) => ({
+        label: link.label.trim(),
+        url: typeof link.url === 'string' && /^https?:\/\//i.test(link.url) ? link.url : '',
+        description: typeof link.description === 'string' ? link.description : '',
+      }))
+    if (links.length) meta.links = links
+  }
   if (typeof data?.geography?.county === 'string' && data.geography.county) meta.county = data.geography.county
   if (typeof data?.focal?.payor === 'string' && data.focal.payor) meta.payor = data.focal.payor
   if (typeof data?.focal?.planType === 'string' && data.focal.planType) meta.planType = data.focal.planType
@@ -255,7 +359,12 @@ export function assistantFromApi(data) {
       .sort((a, b) => a.rank - b.rank || a.payor.localeCompare(b.payor))
     if (standings.length) meta.standings = standings
     const ahead = ranksAheadSentence(standings)
-    if (ahead && !content.includes(ahead)) content = `${content} ${ahead}`
+    if (ahead && !content.includes(ahead)) {
+      content = content.trim() ? `${content.trim()} ${ahead}` : ahead
+    }
+  }
+  if (!String(content).trim()) {
+    content = meta.columns?.length ? '' : 'No response from the network service.'
   }
   const message = { role: 'assistant', content }
   if (Object.keys(meta).length) message.meta = meta
@@ -263,9 +372,39 @@ export function assistantFromApi(data) {
   return { message, rankSessionId }
 }
 
+function historyCell(value) {
+  return value == null ? '' : String(value).replace(/\|/g, '\\|').replace(/\s+/g, ' ').trim()
+}
+
+/** Prose plus any columns/rows, so a follow-up such as "add a column" can see the table. */
+function historyContent(message) {
+  const content = String(message?.content || '')
+  const columns = Array.isArray(message?.meta?.columns) ? message.meta.columns.map((column) => String(column)) : []
+  const rows = Array.isArray(message?.meta?.rows) ? message.meta.rows : []
+  if (!columns.length || !rows.length || content.includes('|')) return content
+  const header = `| ${columns.map((column) => historyCell(column)).join(' | ')} |`
+  const rule = `| ${columns.map(() => '---').join(' | ')} |`
+  const body = rows.map((row) => (
+    `| ${columns.map((column, index) => historyCell(Array.isArray(row) ? row[index] : row?.[column])).join(' | ')} |`
+  )).join('\n')
+  const table = `${header}\n${rule}\n${body}`
+  return content.trim() ? `${content.trim()}\n\n${table}` : table
+}
+
 export function chatTranscript(messages) {
-  return messages
+  return (Array.isArray(messages) ? messages : [])
     .filter((message) => message.role === 'user' || message.role === 'assistant')
-    .map((message) => ({ role: message.role, content: String(message.content || '') }))
+    .map((message) => ({ role: message.role, content: historyContent(message) }))
     .slice(-20)
 }
+
+/** Prior turns for /ask. The current question is sent separately. */
+export function conversationHistory(messages, question) {
+  const transcript = chatTranscript(messages)
+  const last = transcript.at(-1)
+  if (last?.role === 'user' && last.content === String(question || '').trim()) {
+    return transcript.slice(0, -1)
+  }
+  return transcript
+}
+

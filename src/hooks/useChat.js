@@ -4,11 +4,16 @@ import { askQuestion, checkHealth, fetchRankOptions, rankQuestion, sendChat } fr
 import {
   assistantFromApi,
   chatTranscript,
+  conversationHistory,
   createConversationTitle,
+  isBlockedQuestion,
+  isTableFollowUp,
   resolveScope,
+  responseCounty,
   payorNamedInQuestion,
   payorsNamedInQuestion,
   planTypeNamedInQuestion,
+  listsRankedPayors,
   routeMessage,
   scopeError,
   scopeFromHistory,
@@ -206,9 +211,24 @@ export function useChat() {
       ? priorMessages
       : [...priorMessages, userMessage]
     const lastAssistant = [...updatedMessages].reverse().find((message) => message.role === 'assistant')
-    const route = routeMessage(text, silent ? undefined : lastAssistant?.meta?.kind, resolved)
+    // Write requests and rule overrides go straight to the service, which answers them without a payor.
+    const blocked = isBlockedQuestion(text)
+    const route = blocked ? 'ask' : routeMessage(
+      text,
+      silent ? undefined : lastAssistant?.meta?.kind,
+      resolved,
+      silent ? undefined : lastAssistant?.meta?.source,
+    )
+    // Earlier turns only; the current question goes in `question`.
+    const history = conversationHistory(updatedMessages, text)
+    const isFollowUp = !silent && priorMessages.some((message) => (
+      message.role === 'assistant'
+      && (message.meta?.source === 'ask' || message.meta?.source === 'rank')
+      && message.meta?.kind !== 'clarify'
+    ))
+    const listing = listsRankedPayors(text)
     const scope = { payors: resolved.payors, payorsCrossPlanTypes: resolved.payorsCrossPlanTypes }
-    const scopeProblem = route === 'chat' ? '' : scopeError(scope)
+    const scopeProblem = route === 'chat' || listing ? '' : scopeError(scope)
     const lengthError = route !== 'chat' && text.length > 500
       ? 'Network questions must be 500 characters or fewer.'
       : ''
@@ -265,17 +285,34 @@ export function useChat() {
       return
     }
 
-    const sendResolvedRequest = (scopeOverride) => {
+    const sendResolvedRequest = (scopeOverride, countyName) => {
       const requestScope = scopeOverride || scope
-      const context = resolved.county ? { county: resolved.county, state: 'TX' } : undefined
+      const county = responseCounty({
+        question: text,
+        memoryCounty: resolved.county,
+        optionsCounty: countyName,
+      })
+      const context = county ? { county, state: 'TX' } : undefined
+      const earlier = priorMessages
+        .filter((message) => message.role === 'user')
+        .map((message) => message.content)
+        .join('\n')
       const request = route === 'ask'
-        ? askQuestion({ question: text, ...requestScope, ...(context ? { context } : {}) })
+        ? askQuestion({
+            question: text,
+            ...requestScope,
+            ...(options.payorConfirmed ? { payorConfirmed: true } : {}),
+            ...(context ? { context } : {}),
+            ...(history.length ? { history } : {}),
+          })
         : route === 'rank'
           ? rankQuestion({
               message: text,
               question: text,
+              earlier,
+              messages: chatTranscript([...history, { role: 'user', content: text }]),
               ...requestScope,
-              ...(context ? { context } : {}),
+              ...(context ? { context, county } : {}),
               ...(currentConversation?.rankSessionId ? { sessionId: currentConversation.rankSessionId } : {}),
             })
           : sendChat(chatTranscript(updatedMessages))
@@ -288,7 +325,7 @@ export function useChat() {
           appendAssistantMessage(conversationId, reply.message, reply.rankSessionId, {
             payor: reply.message.meta?.payor || resolved.payor,
             planType: reply.message.meta?.planType || resolved.planType,
-            county: reply.message.meta?.county || resolved.county,
+            county: reply.message.meta?.county || county || resolved.county,
           })
         })
         .catch((error) => {
@@ -297,12 +334,31 @@ export function useChat() {
         })
     }
 
+    if (blocked && !lengthError) {
+      sendResolvedRequest({ payors: [], payorsCrossPlanTypes: [] })
+      return
+    }
+
+    const pipelineReply = !silent
+      && lastAssistant?.meta?.fromService
+      && ['clarify', 'confirm', 'needs_data'].includes(lastAssistant.meta.kind)
+    const continuingTable = !silent
+      && (lastAssistant?.meta?.source === 'ask' || lastAssistant?.meta?.source === 'rank')
+      && isTableFollowUp(text)
+      && /\bcolumns?\b|\bsort(?:ed)?\s+by\b|\border\s+by\b/i.test(text)
+    if (!lengthError && (pipelineReply || continuingTable)) {
+      sendResolvedRequest()
+      return
+    }
+
     if (route === 'ask' && !lengthError) {
       fetchRankOptions({ q: text, county: resolved.county })
         .then((rankChoices) => {
           const named = payorsNamedInQuestion(text, rankChoices.payors)
           const namedType = planTypeNamedInQuestion(text, rankChoices.planTypes)
-          const payorList = named.length ? named : (resolved.payor ? [resolved.payor] : [])
+          const payorList = named.length
+            ? named
+            : ((options.payorConfirmed || isFollowUp) && resolved.payor ? [resolved.payor] : [])
           const types = namedType
             ? [namedType]
             : (resolved.planType ? [resolved.planType] : (rankChoices.planTypes?.length ? rankChoices.planTypes : ['HMO', 'PPO']))
@@ -329,7 +385,7 @@ export function useChat() {
           sendResolvedRequest({
             payors: payorList,
             payorsCrossPlanTypes: payorList.flatMap((payor) => types.map((planType) => ({ payor, planType }))),
-          })
+          }, rankChoices.county)
         })
         .catch((error) => {
           const content = error instanceof Error ? error.message : 'Rank options are unavailable.'
@@ -341,6 +397,26 @@ export function useChat() {
     if (!needsSuggestion && !silent && !options.detected && route === 'rank' && !lengthError) {
       fetchRankOptions({ q: text, county: resolved.county })
         .then((rankChoices) => {
+          if (listing) {
+            const typeInQuestion = planTypeNamedInQuestion(text, rankChoices.planTypes)
+            const types = typeInQuestion ? [typeInQuestion] : (rankChoices.planTypes?.length ? rankChoices.planTypes : ['HMO'])
+            const payorList = rankChoices.payors?.length
+              ? rankChoices.payors
+              : (Array.isArray(resolved.payors) ? resolved.payors : [])
+            if (!payorList.length) {
+              appendAssistantMessage(conversationId, {
+                role: 'assistant',
+                content: 'No ranked payors are loaded for that county.',
+                meta: { source: route, ...(rankChoices?.county ? { county: rankChoices.county } : {}) },
+              })
+              return
+            }
+            sendResolvedRequest({
+              payors: payorList,
+              payorsCrossPlanTypes: payorList.flatMap((payor) => types.map((planType) => ({ payor, planType }))),
+            }, rankChoices.county)
+            return
+          }
           const namedPayor = payorNamedInQuestion(text, rankChoices.payors)
           const namedType = planTypeNamedInQuestion(text, rankChoices.planTypes)
           if ((namedPayor && namedPayor !== resolved.payor) || (namedType && namedType !== resolved.planType)) {
@@ -353,7 +429,7 @@ export function useChat() {
             })
             return
           }
-          sendResolvedRequest()
+          sendResolvedRequest(undefined, rankChoices.county)
         })
         .catch((error) => {
           const content = error instanceof Error ? error.message : 'Rank options are unavailable.'
@@ -427,6 +503,11 @@ export function useChat() {
     openConversation,
     reorderConversation,
     applySuggestion: (field, value) => {
+      // A suggested question is sent as a new message, not as a payor or plan type choice.
+      if (field === 'question') {
+        sendMessage(value)
+        return
+      }
       const nextPayors = field === 'payor' ? value : payors
       const nextPlanTypes = field === 'planType' ? value : planTypes
       if (field === 'payor') setPayors(value)
@@ -437,6 +518,7 @@ export function useChat() {
         payorsText: nextPayors,
         planTypesText: nextPlanTypes,
         silent: true,
+        payorConfirmed: field === 'payor' || Boolean(nextPayors),
       })
     },
     sendMessage,
