@@ -1,11 +1,24 @@
 import { useEffect, useRef, useState } from 'react'
 import { Clock3, ExternalLink } from 'lucide-react'
 
+const THINKING_MESSAGES = ['Looking for data', 'Analyzing data', 'Preparing response']
+
 function ThinkingIndicator() {
+  const [messageIndex, setMessageIndex] = useState(0)
+
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      setMessageIndex((current) => (current + 1) % THINKING_MESSAGES.length)
+    }, 2000)
+
+    return () => clearInterval(intervalId)
+  }, [])
+
   return (
     <div className="message-row thinking-row">
-      <div className="thinking-indicator" aria-label="Genie is thinking">
-        <span /><span /><span />
+      <div className="thinking-indicator" role="status">
+        <img alt="" src="/cube-loading.webp" />
+        <span>{THINKING_MESSAGES[messageIndex]}</span>
       </div>
     </div>
   )
@@ -186,7 +199,6 @@ function MessageList({ activeId, isThinking, messages, onApplySuggestion }) {
   return (
     <section aria-label="Chat messages" className="messages-panel">
       <div className="messages-inner">
-        <div className="conversation-date"><span><Clock3 size={12} /> TODAY</span></div>
         {messages.map((message, index) => (
           <article
             className={`message-row ${message.role === 'user' ? 'user-message-row' : ''}`}

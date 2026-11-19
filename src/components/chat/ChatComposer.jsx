@@ -1,4 +1,4 @@
-import { ArrowUp, ExternalLink, Sparkles } from 'lucide-react'
+import { ArrowUp, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 const suggestedPrompts = [
@@ -38,7 +38,6 @@ function ChatComposer({
               onClick={() => onPromptSelect(prompt)}
               type="button"
             >
-              <Sparkles size={16} />
               <span>{prompt}</span>
             </Button>
           ))}

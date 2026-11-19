@@ -19,7 +19,7 @@ import {
   scopeFromHistory,
   scopeSuggestion,
 } from '@/lib/chat'
-import { loadChats, saveChats } from '@/lib/db'
+import { deleteChat, loadChats, saveChats } from '@/lib/db'
 
 export function useChat() {
   const [conversations, setConversations] = useState([])
@@ -126,6 +126,18 @@ export function useChat() {
     )
   }
 
+  const renameConversation = (conversationId, title) => {
+    const trimmedTitle = title.trim()
+    if (!trimmedTitle) return
+    setConversations((current) =>
+      current.map((conversation) =>
+        conversation.id === conversationId
+          ? { ...conversation, title: trimmedTitle }
+          : conversation,
+      ),
+    )
+  }
+
   const toggleArchivedConversation = (conversationId) => {
     setConversations((current) =>
       current.map((conversation) =>
@@ -136,7 +148,8 @@ export function useChat() {
     )
   }
 
-  const deleteConversation = (conversationId) => {
+  const deleteConversation = async (conversationId) => {
+    await deleteChat(conversationId)
     setConversations((current) =>
       current.filter((conversation) => conversation.id !== conversationId),
     )
@@ -502,6 +515,7 @@ export function useChat() {
     planTypes,
     openConversation,
     reorderConversation,
+    renameConversation,
     applySuggestion: (field, value) => {
       // A suggested question is sent as a new message, not as a payor or plan type choice.
       if (field === 'question') {

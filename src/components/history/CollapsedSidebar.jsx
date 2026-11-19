@@ -1,16 +1,21 @@
-import { History, Plus, Search, Sparkles } from 'lucide-react'
+import { History, PanelLeftOpen, Plus, Search } from 'lucide-react'
 
 function CollapsedSidebar({ onExpand, onNewChat }) {
   return (
     <nav aria-label="Conversation sidebar" className="portal-collapsed-sidebar">
+      <div aria-hidden="true" className="portal-collapsed-brand">
+        <span className="brand-mark">
+          <img alt="" className="brand-logo" src="/chatBotIcon.png" />
+        </span>
+      </div>
       <button
-        aria-label="Expand GenieAI sidebar"
-        className="portal-collapsed-brand"
+        aria-label="Expand conversation history"
+        className="portal-rail-action"
         onClick={onExpand}
         title="Expand sidebar"
         type="button"
       >
-        <span className="brand-mark"><Sparkles size={18} strokeWidth={2.2} /></span>
+        <PanelLeftOpen size={18} />
       </button>
       <button
         aria-label="Start a new chat"
