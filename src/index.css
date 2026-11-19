@@ -1439,7 +1439,7 @@ textarea:focus-visible {
   max-width: 620px;
   margin: 0;
   color: #5e5965;
-  font-size: 16.8px;
+  font-size: 15.8px;
   line-height: 1.8;
   white-space: pre-wrap;
 }
@@ -2143,7 +2143,7 @@ textarea:focus-visible {
 
 .portal-sidebar .brand-name {
   color: #622778;
-  font-size: 24.63px;
+  font-size: 22.63px;
   font-weight: 500;
   letter-spacing: -0.5px;
 }
@@ -2171,7 +2171,7 @@ textarea:focus-visible {
   border: 0 !important;
   border-radius: 7px !important;
   box-shadow: none;
-  font-size: 17.39px !important;
+  font-size: 15.39px !important;
   font-weight: 500 !important;
 }
 
@@ -2188,7 +2188,7 @@ textarea:focus-visible {
 }
 
 .portal-sidebar .empty-search {
-  font-size: 15.94px;
+  font-size: 13.94px;
 }
 
 .portal-sidebar .history-search {
@@ -2208,7 +2208,7 @@ textarea:focus-visible {
 }
 
 .portal-sidebar .history-search input {
-  font-size: 17.39px;
+  font-size: 15.39px;
 }
 
 .portal-sidebar .history-search kbd {
@@ -2230,7 +2230,7 @@ textarea:focus-visible {
   justify-content: space-between;
   margin: 8px 4px 8px;
   color: #666;
-  font-size: 17.39px;
+  font-size: 15.39px;
   font-weight: 400;
 }
 
@@ -2282,7 +2282,7 @@ textarea:focus-visible {
   width: 100%;
   overflow: hidden;
   color: #111;
-  font-size: 17.39px;
+  font-size: 15.39px;
   font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2291,7 +2291,7 @@ textarea:focus-visible {
 .portal-sidebar .portal-history-copy small {
   flex: 0 0 auto;
   color: #777;
-  font-size: 14.49px;
+  font-size: 12.49px;
   font-weight: 400;
   line-height: 1.35;
   white-space: nowrap;
@@ -2494,7 +2494,7 @@ textarea:focus-visible {
   max-height: 110px;
   padding: 6px 0;
   color: #222;
-  font-size: 14.4px;
+  font-size: 13.4px;
   line-height: 1.5;
   resize: none;
 }
@@ -2536,19 +2536,20 @@ textarea:focus-visible {
 }
 
 .portal-composer-meta > span,
-.portal-composer-meta button {
+.portal-composer-meta a {
   display: inline-flex;
   align-items: center;
   gap: 4px;
 }
 
-.portal-composer-meta button {
+.portal-composer-meta a {
   padding: 0;
   color: #666;
   background: transparent;
   border: 0;
   cursor: pointer;
   font-size: inherit;
+  text-decoration: none;
   white-space: nowrap;
 }
 
