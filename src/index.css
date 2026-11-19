@@ -1478,6 +1478,12 @@ textarea:focus-visible {
   overflow-x: auto;
 }
 
+.message-table-title {
+  margin: 14px 0 6px !important;
+  color: #3d3946 !important;
+  font-weight: 600;
+}
+
 .message-details table {
   width: 100%;
   border-collapse: collapse;
@@ -1623,10 +1629,15 @@ textarea:focus-visible {
   font-weight: 650;
 }
 
+/* The payor the user asked about stands out in the full list. */
 .rank-board tr.rank-focal td {
-  color: #4a3d78;
-  background: #f7f4fb;
-  font-weight: 650;
+  color: #3b2a7a;
+  background: #e9e1fb;
+  font-weight: 700;
+}
+
+.rank-board tr.rank-focal td:first-child {
+  box-shadow: inset 3px 0 0 #6a4dc4;
 }
 
 .rank-chart {
@@ -1652,8 +1663,8 @@ textarea:focus-visible {
 }
 
 .rank-bar.focal .rank-bar-label {
-  color: #4a3d78;
-  font-weight: 650;
+  color: #3b2a7a;
+  font-weight: 700;
 }
 
 .rank-bar-track {
