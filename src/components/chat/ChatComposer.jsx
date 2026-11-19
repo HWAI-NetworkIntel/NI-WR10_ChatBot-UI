@@ -1,5 +1,6 @@
 import { ArrowUp, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import preReadPdf from '../../../docs/NI_GenieAI.pdf?url'
 
 const suggestedPrompts = [
   'How many providers does Humana have in Dallas County, Texas?',
@@ -65,7 +66,7 @@ function ChatComposer({
         </Button>
       </form>
       <div className="portal-composer-meta">
-        <button type="button">Pre-Read <ExternalLink size={12} /></button>
+        <a href={preReadPdf} target="_blank" rel="noopener noreferrer">Pre-Read <ExternalLink size={12} /></a>
       </div>
     </footer>
   )
