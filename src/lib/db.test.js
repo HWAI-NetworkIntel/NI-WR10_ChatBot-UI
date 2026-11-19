@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { loadChats, saveChats } from './db.js'
+import { deleteChat, loadChats, saveChats } from './db.js'
 
 test('chat storage preserves history and seeds only once', async () => {
   const starterConversations = [
@@ -38,9 +38,16 @@ test('chat storage preserves history and seeds only once', async () => {
   await saveChats(updated)
   assert.deepEqual(await loadChats(starterConversations), updated)
 
+  updated[0] = { ...updated[0], pinned: false }
+  await saveChats(updated)
+  assert.deepEqual(await loadChats(starterConversations), updated)
+
   // Later queued saves must win, including removal of an earlier chat.
   await Promise.all([saveChats(updated), saveChats([updated[1]])])
   assert.deepEqual(await loadChats(starterConversations), [updated[1]])
+
+  await deleteChat(updated[1].id)
+  assert.deepEqual(await loadChats(starterConversations), [])
 
   await saveChats([])
   assert.deepEqual(await loadChats(starterConversations), [])

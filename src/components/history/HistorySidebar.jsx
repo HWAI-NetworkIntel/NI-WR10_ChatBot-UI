@@ -11,9 +11,12 @@ function HistorySidebar({
   collapsed,
   conversations,
   onClose,
+  onDeleteConversation,
   onExpand,
   onNewChat,
   onOpenConversation,
+  onRenameConversation,
+  onTogglePinnedConversation,
   onResize,
   onResizingChange,
   onSearchChange,
@@ -22,6 +25,8 @@ function HistorySidebar({
 }) {
   const dragRef = useRef(null)
   const activeConversations = conversations.filter((conversation) => !conversation.archived)
+  const pinnedConversations = activeConversations.filter((conversation) => conversation.pinned)
+  const recentConversations = activeConversations.filter((conversation) => !conversation.pinned)
 
   const startResize = (event) => {
     if (window.matchMedia('(max-width: 760px)').matches) return
@@ -71,12 +76,28 @@ function HistorySidebar({
           <ConversationSearch onChange={onSearchChange} value={searchTerm} />
 
           <nav aria-label="Conversation history" className="conversation-history">
-            <section className="history-group">
+            <section aria-label="Pinned chats" className="history-group">
+              <h2><span className="history-group-label">Pinned</span><ChevronDown size={13} /></h2>
+              <ConversationList
+                activeId={activeId}
+                conversations={pinnedConversations}
+                emptyMessage="No pinned chats."
+                onOpen={onOpenConversation}
+                onDelete={onDeleteConversation}
+                onRename={onRenameConversation}
+                onTogglePinned={onTogglePinnedConversation}
+              />
+            </section>
+            <section aria-label="Recent chats" className="history-group">
               <h2>Recent <ChevronDown size={13} /></h2>
               <ConversationList
                 activeId={activeId}
-                conversations={activeConversations}
+                conversations={recentConversations}
+                emptyMessage="No recent chats."
                 onOpen={onOpenConversation}
+                onDelete={onDeleteConversation}
+                onRename={onRenameConversation}
+                onTogglePinned={onTogglePinnedConversation}
               />
             </section>
           </nav>

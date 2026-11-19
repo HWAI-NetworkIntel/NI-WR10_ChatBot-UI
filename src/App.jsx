@@ -8,7 +8,7 @@ function App() {
   const chat = useChat()
   const inputRef = useRef(null)
   const [searchTerm, setSearchTerm] = useState('')
-  const [sidebarWidth, setSidebarWidth] = useState(250)
+  const [sidebarWidth, setSidebarWidth] = useState(320)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [isResizingSidebar, setIsResizingSidebar] = useState(false)
 
@@ -28,9 +28,12 @@ function App() {
         collapsed={sidebarCollapsed}
         conversations={visibleConversations}
         onClose={() => setSidebarCollapsed(true)}
+        onDeleteConversation={chat.deleteConversation}
         onExpand={() => setSidebarCollapsed(false)}
         onNewChat={startNewChat}
         onOpenConversation={chat.openConversation}
+        onRenameConversation={chat.renameConversation}
+        onTogglePinnedConversation={chat.togglePinnedConversation}
         onResize={setSidebarWidth}
         onResizingChange={setIsResizingSidebar}
         onSearchChange={setSearchTerm}

@@ -99,3 +99,11 @@ export async function saveChats(conversations) {
 
   await complete
 }
+
+export async function deleteChat(chatId) {
+  const database = await openDatabase()
+  const transaction = database.transaction('Chat', 'readwrite')
+  const complete = transactionComplete(transaction)
+  transaction.objectStore('Chat').delete(chatId)
+  await complete
+}
