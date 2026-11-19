@@ -312,6 +312,8 @@ export function useChat() {
               earlier,
               messages: chatTranscript([...history, { role: 'user', content: text }]),
               ...requestScope,
+              // A payor picked from the service's options: answer for it even if the question named another.
+              ...(options.payorConfirmed ? { payorConfirmed: true } : {}),
               ...(context ? { context, county } : {}),
               ...(currentConversation?.rankSessionId ? { sessionId: currentConversation.rankSessionId } : {}),
             })

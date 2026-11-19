@@ -114,11 +114,36 @@ function payorsMatchingQuestion(question, payors) {
   const text = payorKey(question)
   const names = [...new Set((payors || []).filter((payor) => typeof payor === 'string' && payor.trim()))]
   if (!text || !names.length) return []
-  return names.filter((payor) => {
+  const exact = names.filter((payor) => {
     const key = payorKey(payor)
     const stem = payorStem(payor)
     return (key && text.includes(key)) || (stem && text.includes(stem))
   })
+  if (exact.length) return exact
+  // Typos such as "cenetne": accept a close spelling only when exactly one payor fits.
+  const close = names.filter((payor) => misspells(question, payor))
+  return close.length === 1 ? close : []
+}
+
+/** Edit distance with adjacent swaps, so "cenetne" is 1 away from "centene". */
+function typoDistance(a, b) {
+  const rows = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)])
+  for (let j = 1; j <= b.length; j += 1) rows[0][j] = j
+  for (let i = 1; i <= a.length; i += 1) {
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      rows[i][j] = Math.min(rows[i - 1][j] + 1, rows[i][j - 1] + 1, rows[i - 1][j - 1] + cost)
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) rows[i][j] = Math.min(rows[i][j], rows[i - 2][j - 2] + 1)
+    }
+  }
+  return rows[a.length][b.length]
+}
+
+/** A word of 5+ letters within 1 edit (2 for long names) of the payor's stem or first word. */
+function misspells(question, payor) {
+  const targets = [...new Set([payorStem(payor), payorKey(String(payor).split(/[\s,]+/)[0])].filter((value) => value && value.length >= 5))]
+  const words = String(question || '').toLowerCase().match(/[a-z]{5,}/g) || []
+  return words.some((word) => targets.some((target) => typoDistance(word, target) <= (target.length >= 9 ? 2 : 1)))
 }
 
 /** Every rankings payor named in the question. */
@@ -328,6 +353,17 @@ export function assistantFromApi(data) {
     meta.columns = data.columns.map((column) => String(column))
     meta.rows = data.rows.slice(0, 50)
     if (data.rowLimitHit || data.rows.length > 50) meta.rowLimitHit = true
+  }
+  // Several titled tables in one answer, e.g. "what to improve to pass X" and "to reach the leader".
+  if (Array.isArray(data?.tables)) {
+    const tables = data.tables
+      .filter((table) => table && Array.isArray(table.columns) && Array.isArray(table.rows) && table.rows.length)
+      .map((table) => ({
+        title: typeof table.title === 'string' ? table.title : '',
+        columns: table.columns.map((column) => String(column)),
+        rows: table.rows.slice(0, 50),
+      }))
+    if (tables.length) meta.tables = tables
   }
   if (Array.isArray(data?.suggestions)) {
     const suggestions = data.suggestions.filter((item) => typeof item === 'string' && item.trim())

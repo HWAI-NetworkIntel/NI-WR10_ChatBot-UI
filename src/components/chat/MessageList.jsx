@@ -18,19 +18,12 @@ function cellText(value) {
 
 const RANK_KINDS = new Set(['baseline', 'prediction', 'confirm', 'clarify', 'needs_data'])
 
-function normalized(text) {
-  return String(text || '').trim().replace(/[?.!\s]+$/, '').toLowerCase()
-}
 
-function Interpretation({ standalone, question }) {
-  if (!standalone || normalized(standalone) === normalized(question)) return null
-  return <p className="message-interpretation">Interpreted as: {standalone}</p>
-}
-
-function DataTable({ columns, rows, rowLimitHit }) {
+function DataTable({ columns, rows, rowLimitHit, title }) {
   if (!columns?.length || !rows?.length) return null
   return (
     <div className="message-table-wrap message-data-table">
+      {title && <p className="message-table-title">{title}</p>}
       <table>
         <thead>
           <tr>
@@ -193,12 +186,6 @@ function MessageList({ activeId, isThinking, messages, onApplySuggestion }) {
             key={`${activeId}-${index}`}
           >
             <div className="message-body">
-              {message.role === 'assistant' && (
-                <Interpretation
-                  question={messages.slice(0, index).findLast((item) => item.role === 'user')?.content}
-                  standalone={message.meta?.standalone}
-                />
-              )}
               {message.content ? <p>{message.content}</p> : null}
               {message.role === 'assistant' && (
                 <DataTable
@@ -207,6 +194,14 @@ function MessageList({ activeId, isThinking, messages, onApplySuggestion }) {
                   rows={message.meta?.rows}
                 />
               )}
+              {message.role === 'assistant' && message.meta?.tables?.map((table, tableIndex) => (
+                <DataTable
+                  columns={table.columns}
+                  key={`${table.title}-${tableIndex}`}
+                  rows={table.rows}
+                  title={table.title}
+                />
+              ))}
               {message.role === 'assistant' && (
                 <SuggestionChoices
                   active={!isThinking && index === messages.length - 1}
