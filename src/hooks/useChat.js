@@ -34,6 +34,15 @@ export function useChat() {
   const [planTypes, setPlanTypes] = useState('')
   const [apiStatus, setApiStatus] = useState('')
   const activeConversationRef = useRef(null)
+  const requestControllerRef = useRef(null)
+
+  useEffect(() => () => requestControllerRef.current?.abort(), [])
+
+  const stopResponse = () => {
+    requestControllerRef.current?.abort()
+    requestControllerRef.current = null
+    setIsThinking(false)
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -97,6 +106,7 @@ export function useChat() {
   }, [conversations, isLoading])
 
   const startNewChat = () => {
+    stopResponse()
     activeConversationRef.current = null
     setActiveId(null)
     setMessages([])
@@ -107,6 +117,7 @@ export function useChat() {
   }
 
   const openConversation = (conversation) => {
+    stopResponse()
     const memory = scopeFromHistory(conversation.messages, conversation.scopeMemory)
     activeConversationRef.current = conversation.id
     setActiveId(conversation.id)
@@ -154,6 +165,7 @@ export function useChat() {
       current.filter((conversation) => conversation.id !== conversationId),
     )
     if (activeId === conversationId) {
+      stopResponse()
       activeConversationRef.current = null
       setActiveId(null)
       setMessages([])
@@ -204,11 +216,10 @@ export function useChat() {
   const sendMessage = (content = draft, options = {}) => {
     const text = String(content || '').trim()
     if (!text || isLoading) return
-    if (isThinking && !options.continue) return
+    if ((isThinking || requestControllerRef.current) && !options.continue) return
 
-    const payorsText = options.payorsText ?? payors
-    const planTypesText = options.planTypesText ?? planTypes
     const silent = Boolean(options.silent)
+    const replacing = options.replaceFromIndex !== undefined
     const userMessage = { role: 'user', content: text }
     const conversationId = silent
       ? (activeId ?? activeConversationRef.current)
@@ -217,10 +228,16 @@ export function useChat() {
     const currentConversation = conversations.find(
       (conversation) => conversation.id === conversationId,
     )
-    const priorMessages = currentConversation?.messages ?? messages
-    const memory = scopeFromHistory(priorMessages, currentConversation?.scopeMemory)
+    if (replacing && (!Number.isInteger(options.replaceFromIndex)
+      || (currentConversation?.messages ?? messages)[options.replaceFromIndex]?.role !== 'user')) return
+    const priorMessages = replacing
+      ? (currentConversation?.messages ?? messages).slice(0, options.replaceFromIndex)
+      : (currentConversation?.messages ?? messages)
+    const memory = scopeFromHistory(priorMessages, replacing ? undefined : currentConversation?.scopeMemory)
+    const payorsText = options.payorsText ?? (replacing ? memory.payor || '' : payors)
+    const planTypesText = options.planTypesText ?? (replacing ? memory.planType || '' : planTypes)
     const resolved = resolveScope({ payorText: payorsText, planTypeText: planTypesText, question: text, memory })
-    const updatedMessages = silent
+    const updatedMessages = silent && !replacing
       ? priorMessages
       : [...priorMessages, userMessage]
     const lastAssistant = [...updatedMessages].reverse().find((message) => message.role === 'assistant')
@@ -257,12 +274,26 @@ export function useChat() {
     }
     if (resolved.payor && resolved.payor !== payors) setPayors(resolved.payor)
     if (resolved.planType && resolved.planType !== planTypes) setPlanTypes(resolved.planType)
+    if (replacing) {
+      setPayors(resolved.payor || '')
+      setPlanTypes(resolved.planType || '')
+    }
+
+    requestControllerRef.current?.abort()
+    const controller = new AbortController()
+    const { signal } = controller
+    requestControllerRef.current = controller
+    const appendResponse = (...args) => {
+      if (signal.aborted) return
+      if (requestControllerRef.current === controller) requestControllerRef.current = null
+      appendAssistantMessage(...args)
+    }
 
     activeConversationRef.current = conversationId
     setActiveId(conversationId)
-    if (!silent) {
+    if (!silent || replacing) {
       setMessages(updatedMessages)
-      setDraft('')
+      if (!replacing) setDraft('')
     }
     setIsThinking(true)
     setConversations((current) => {
@@ -273,8 +304,9 @@ export function useChat() {
             ? {
                 ...conversation,
                 updated: 'Just now',
-                messages: silent ? conversation.messages : updatedMessages,
-                scopeMemory: { ...conversation.scopeMemory, ...rememberedScope },
+                messages: silent && !replacing ? conversation.messages : updatedMessages,
+                scopeMemory: { ...(!replacing ? conversation.scopeMemory : {}), ...rememberedScope },
+                ...(replacing ? { rankSessionId: undefined } : {}),
               }
             : conversation,
         )
@@ -294,7 +326,7 @@ export function useChat() {
     })
 
     if (lengthError || (route === 'rank' && scopeProblem && !needsSuggestion)) {
-      appendAssistantMessage(conversationId, { role: 'assistant', content: lengthError || scopeProblem })
+      appendResponse(conversationId, { role: 'assistant', content: lengthError || scopeProblem })
       return
     }
 
@@ -317,7 +349,7 @@ export function useChat() {
             ...(options.payorConfirmed ? { payorConfirmed: true } : {}),
             ...(context ? { context } : {}),
             ...(history.length ? { history } : {}),
-          })
+          }, { signal })
         : route === 'rank'
           ? rankQuestion({
               message: text,
@@ -328,24 +360,26 @@ export function useChat() {
               // A payor picked from the service's options: answer for it even if the question named another.
               ...(options.payorConfirmed ? { payorConfirmed: true } : {}),
               ...(context ? { context, county } : {}),
-              ...(currentConversation?.rankSessionId ? { sessionId: currentConversation.rankSessionId } : {}),
-            })
-          : sendChat(chatTranscript(updatedMessages))
+              ...(!replacing && currentConversation?.rankSessionId ? { sessionId: currentConversation.rankSessionId } : {}),
+            }, { signal })
+          : sendChat(chatTranscript(updatedMessages), { signal })
 
       request
         .then((data) => {
+          if (signal.aborted) return
           const reply = assistantFromApi(data)
           if (reply.message.meta) reply.message.meta.source = route
           else reply.message.meta = { source: route }
-          appendAssistantMessage(conversationId, reply.message, reply.rankSessionId, {
+          appendResponse(conversationId, reply.message, reply.rankSessionId, {
             payor: reply.message.meta?.payor || resolved.payor,
             planType: reply.message.meta?.planType || resolved.planType,
             county: reply.message.meta?.county || county || resolved.county,
           })
         })
         .catch((error) => {
+          if (signal.aborted) return
           const content = error instanceof Error ? error.message : 'The network service request failed.'
-          appendAssistantMessage(conversationId, { role: 'assistant', content, meta: { source: route } })
+          appendResponse(conversationId, { role: 'assistant', content, meta: { source: route } })
         })
     }
 
@@ -367,8 +401,9 @@ export function useChat() {
     }
 
     if (route === 'ask' && !lengthError) {
-      fetchRankOptions({ q: text, county: resolved.county })
+      fetchRankOptions({ q: text, county: resolved.county }, { signal })
         .then((rankChoices) => {
+          if (signal.aborted) return
           const named = payorsNamedInQuestion(text, rankChoices.payors)
           const namedType = planTypeNamedInQuestion(text, rankChoices.planTypes)
           const payorList = named.length
@@ -384,7 +419,7 @@ export function useChat() {
               options: rankChoices,
               requirePlanType: false,
             })
-            appendAssistantMessage(conversationId, {
+            appendResponse(conversationId, {
               role: 'assistant',
               content: suggestion?.content || 'Which payor should I use?',
               meta: {
@@ -403,15 +438,17 @@ export function useChat() {
           }, rankChoices.county)
         })
         .catch((error) => {
+          if (signal.aborted) return
           const content = error instanceof Error ? error.message : 'Rank options are unavailable.'
-          appendAssistantMessage(conversationId, { role: 'assistant', content, meta: { source: route } })
+          appendResponse(conversationId, { role: 'assistant', content, meta: { source: route } })
         })
       return
     }
 
     if (!needsSuggestion && !silent && !options.detected && route === 'rank' && !lengthError) {
-      fetchRankOptions({ q: text, county: resolved.county })
+      fetchRankOptions({ q: text, county: resolved.county }, { signal })
         .then((rankChoices) => {
+          if (signal.aborted) return
           if (listing) {
             const typeInQuestion = planTypeNamedInQuestion(text, rankChoices.planTypes)
             const types = typeInQuestion ? [typeInQuestion] : (rankChoices.planTypes?.length ? rankChoices.planTypes : ['HMO'])
@@ -419,7 +456,7 @@ export function useChat() {
               ? rankChoices.payors
               : (Array.isArray(resolved.payors) ? resolved.payors : [])
             if (!payorList.length) {
-              appendAssistantMessage(conversationId, {
+              appendResponse(conversationId, {
                 role: 'assistant',
                 content: 'No ranked payors are loaded for that county.',
                 meta: { source: route, ...(rankChoices?.county ? { county: rankChoices.county } : {}) },
@@ -436,6 +473,7 @@ export function useChat() {
           const namedType = planTypeNamedInQuestion(text, rankChoices.planTypes)
           if ((namedPayor && namedPayor !== resolved.payor) || (namedType && namedType !== resolved.planType)) {
             sendMessage(text, {
+              ...options,
               payorsText: namedPayor || resolved.payor,
               planTypesText: namedType || resolved.planType,
               silent: true,
@@ -447,19 +485,22 @@ export function useChat() {
           sendResolvedRequest(undefined, rankChoices.county)
         })
         .catch((error) => {
+          if (signal.aborted) return
           const content = error instanceof Error ? error.message : 'Rank options are unavailable.'
-          appendAssistantMessage(conversationId, { role: 'assistant', content, meta: { source: route } })
+          appendResponse(conversationId, { role: 'assistant', content, meta: { source: route } })
         })
       return
     }
 
     if (needsSuggestion) {
-      fetchRankOptions({ q: text, county: resolved.county })
+      fetchRankOptions({ q: text, county: resolved.county }, { signal })
         .then((rankChoices) => {
+          if (signal.aborted) return
           const namedPayor = resolved.payor || payorNamedInQuestion(text, rankChoices.payors)
           const namedType = resolved.planType || planTypeNamedInQuestion(text, rankChoices.planTypes)
           if (namedPayor !== resolved.payor || namedType !== resolved.planType) {
             sendMessage(text, {
+              ...options,
               payorsText: namedPayor,
               planTypesText: namedType,
               silent: true,
@@ -468,9 +509,10 @@ export function useChat() {
             return null
           }
           if (!namedType) return rankChoices
-          return fetchRankOptions({ q: text, county: resolved.county || rankChoices.county, planType: namedType })
+          return fetchRankOptions({ q: text, county: resolved.county || rankChoices.county, planType: namedType }, { signal })
         })
         .then((rankChoices) => {
+          if (signal.aborted) return
           if (!rankChoices) return
           const suggestion = scopeSuggestion({
             payorsText: resolved.payor,
@@ -478,7 +520,7 @@ export function useChat() {
             options: rankChoices,
           })
           if (!suggestion) return
-          appendAssistantMessage(conversationId, {
+          appendResponse(conversationId, {
             role: 'assistant',
             content: suggestion?.content || 'Choose a plan type and payor.',
             meta: {
@@ -495,8 +537,9 @@ export function useChat() {
           })
         })
         .catch((error) => {
+          if (signal.aborted) return
           const content = error instanceof Error ? error.message : 'Rank options are unavailable.'
-          appendAssistantMessage(conversationId, { role: 'assistant', content, meta: { source: route } })
+          appendResponse(conversationId, { role: 'assistant', content, meta: { source: route } })
         })
       return
     }
@@ -538,6 +581,10 @@ export function useChat() {
       })
     },
     sendMessage,
+    resendMessage: (index, content = messages[index]?.content) => {
+      sendMessage(content, { replaceFromIndex: index })
+    },
+    stopResponse,
     setDraft,
     setPayors,
     setPlanTypes,

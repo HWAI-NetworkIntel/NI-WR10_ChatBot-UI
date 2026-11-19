@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Clock3, ExternalLink } from 'lucide-react'
+import { Check, Copy, ExternalLink, Pencil, RotateCcw } from 'lucide-react'
 
 const THINKING_MESSAGES = ['Looking for data', 'Analyzing data', 'Preparing response']
 
@@ -182,7 +182,75 @@ function GuideLinks({ links }) {
   )
 }
 
-function MessageList({ activeId, isThinking, messages, onApplySuggestion }) {
+function UserMessage({ content, isThinking, onResend }) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [editedContent, setEditedContent] = useState(content)
+  const [copyStatus, setCopyStatus] = useState('')
+  const copyAttemptRef = useRef(0)
+
+  useEffect(() => {
+    if (!copyStatus) return
+    const timeoutId = setTimeout(() => setCopyStatus(''), 2000)
+    return () => clearTimeout(timeoutId)
+  }, [copyStatus])
+
+  useEffect(() => () => { copyAttemptRef.current += 1 }, [content])
+
+  const copyMessage = async () => {
+    const attempt = ++copyAttemptRef.current
+    try {
+      await navigator.clipboard.writeText(content)
+      if (attempt === copyAttemptRef.current) setCopyStatus('Copied')
+    } catch {
+      if (attempt === copyAttemptRef.current) setCopyStatus('Could not copy. Please select and copy the text.')
+    }
+  }
+
+  return (
+    <>
+      {isEditing ? (
+        <form className="user-message-editor" onSubmit={(event) => {
+          event.preventDefault()
+          if (!editedContent.trim() || isThinking) return
+          onResend(editedContent)
+          setIsEditing(false)
+        }}>
+          <textarea
+            aria-label="Edit message"
+            autoFocus
+            onChange={(event) => setEditedContent(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') setIsEditing(false)
+            }}
+            rows={3}
+            value={editedContent}
+          />
+          <div className="user-message-edit-actions">
+            <button onClick={() => setIsEditing(false)} type="button">Cancel</button>
+            <button disabled={isThinking || !editedContent.trim()} type="submit">Save &amp; send</button>
+          </div>
+        </form>
+      ) : (
+        <>
+          <p>{content}</p>
+          <div className="user-message-actions" role="group" aria-label="Message actions">
+            <button aria-label="Edit message" disabled={isThinking} onClick={() => {
+              setEditedContent(content)
+              setIsEditing(true)
+            }} title="Edit message" type="button"><Pencil size={14} /></button>
+            <button aria-label="Copy message" onClick={copyMessage} title="Copy message" type="button">
+              {copyStatus === 'Copied' ? <Check size={14} /> : <Copy size={14} />}
+            </button>
+            <button aria-label="Reload response" disabled={isThinking} onClick={() => onResend(content)} title="Reload response" type="button"><RotateCcw size={14} /></button>
+          </div>
+        </>
+      )}
+      {copyStatus && <span className="user-message-copy-status" role="status">{copyStatus}</span>}
+    </>
+  )
+}
+
+function MessageList({ activeId, isThinking, messages, onApplySuggestion, onResendMessage }) {
   const messagesEndRef = useRef(null)
 
   useEffect(() => {
@@ -198,7 +266,14 @@ function MessageList({ activeId, isThinking, messages, onApplySuggestion }) {
             key={`${activeId}-${index}`}
           >
             <div className="message-body">
-              {message.content ? <p>{message.content}</p> : null}
+              {message.role === 'user' ? (
+                <UserMessage
+                  content={message.content}
+                  isThinking={isThinking}
+                  key={message.content}
+                  onResend={(content) => onResendMessage(index, content)}
+                />
+              ) : message.content ? <p>{message.content}</p> : null}
               {message.role === 'assistant' && (
                 <DataTable
                   columns={message.meta?.columns}

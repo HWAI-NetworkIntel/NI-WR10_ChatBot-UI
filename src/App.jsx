@@ -51,15 +51,18 @@ function App() {
             isThinking={chat.isThinking}
             messages={chat.messages}
             onApplySuggestion={chat.applySuggestion}
+            onResendMessage={chat.resendMessage}
             onPromptSelect={chat.sendMessage}
           />
           <ChatComposer
             draft={chat.draft}
             inputRef={inputRef}
-            isThinking={chat.isThinking || chat.isLoading}
+            isLoading={chat.isLoading}
+            isThinking={chat.isThinking}
             onDraftChange={chat.setDraft}
             onPromptSelect={chat.messages.length === 0 ? chat.sendMessage : undefined}
             onSend={chat.sendMessage}
+            onStop={chat.stopResponse}
           />
         </div>
       </main>
